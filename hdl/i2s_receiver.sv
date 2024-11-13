@@ -5,7 +5,7 @@ module i2s_receiver (
     input wire rst_in,
 
     // I2S inputs
-    input logic sdata_in,
+    input wire sdata_in,
 
     // I2S Outputs
     output logic sclk_out,
