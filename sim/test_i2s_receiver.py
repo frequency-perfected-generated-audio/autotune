@@ -12,6 +12,11 @@ def get_bit(data, n):
     return (data >> n) & 1
 
 
+def signed2unsigned(data):
+    # do bitwise negation with ^ because python ~ is weird
+    return (data ^ 0xFFFFFF) + 1 if get_bit(data, 23) else data
+
+
 async def reset(dut):
     await FallingEdge(dut.clk_in)
     dut.rst_in.value = 1
@@ -58,7 +63,7 @@ async def test_data_receive(dut):
         await ClockCycles(dut.clk_in, 1)
         await FallingEdge(dut.clk_in)  # sample on negedge so cocotb picks it up
         assert dut.data_valid_out.value == 1
-        assert dut.data_out.value == data >> 8
+        assert dut.data_out.value == (signed2unsigned(data) >> 8)
 
         # data_valid_out should only be valid for one cycle
         await ClockCycles(dut.clk_in, 1)

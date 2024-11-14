@@ -28,10 +28,12 @@ module i2s_receiver (
     logic sclk;
     logic ws;
     logic [23:0] sdata;
+    logic [23:0] sdata_unsigned;
     always_comb begin
-        sclk_out = sclk;
-        ws_out   = ws;
-        data_out = sdata[23:8];
+        sclk_out       = sclk;
+        ws_out         = ws;
+        sdata_unsigned = sdata[23] ? ~sdata + 1 : sdata;
+        data_out       = sdata_unsigned[23:8];
     end
 
     always_ff @(posedge clk_in) begin
