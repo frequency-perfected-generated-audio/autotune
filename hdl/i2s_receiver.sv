@@ -32,7 +32,7 @@ module i2s_receiver (
     always_comb begin
         sclk_out       = sclk;
         ws_out         = ws;
-        sdata_unsigned = sdata[23] ? ~sdata + 1 : sdata;
+        sdata_unsigned = {~sdata[23], sdata[22:0]};
         data_out       = sdata_unsigned[23:8];
     end
 
