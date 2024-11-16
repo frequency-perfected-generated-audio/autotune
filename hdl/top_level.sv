@@ -8,13 +8,17 @@ module top_level (
     // I2S signals
     input  wire  sdata,
     output logic sclk,
-    output logic ws
+    output logic ws,
+
+    // UART Signals
+    output logic uart_txd
 );
 
     logic sys_rst;
     assign sys_rst = btn[0];
 
     logic [15:0] raw_mic_data;
+    logic [23:0] raw_mic_debug_data;
     logic raw_mic_data_valid;
     i2s_receiver i2s_receiver (
         .clk_in(clk_100mhz),
@@ -29,6 +33,7 @@ module top_level (
 
         // Data Outputs
         .data_out(raw_mic_data),
+        .debug_data_out(raw_mic_debug_data),
         .data_valid_out(raw_mic_data_valid)
     );
 
@@ -48,6 +53,22 @@ module top_level (
     );
     assign spkl = spk_out;
     assign spkr = spk_out;
+
+
+    uart_transmit #(
+        .INPUT_CLOCK_FREQ(100_000_000),
+        .MESSAGE_WIDTH(24)
+    ) uart_tx (
+        .clk_in(clk_100mhz),
+        .rst_in(sys_rst),
+
+        .data_in(raw_mic_debug_data),
+        .trigger_in(raw_mic_data_valid),
+
+        .busy_out(),
+        .tx_wire_out(uart_txd)
+
+    );
 
 endmodule
 
