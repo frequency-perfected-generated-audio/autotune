@@ -13,6 +13,7 @@ module i2s_receiver (
 
     // Data Outputs
     output logic [15:0] data_out,
+    output logic [23:0] debug_data_out,
     output logic data_valid_out
 );
 
@@ -34,6 +35,7 @@ module i2s_receiver (
         ws_out         = ws;
         sdata_unsigned = {~sdata[23], sdata[22:0]};
         data_out       = sdata_unsigned[23:8];
+        debug_data_out = sdata_unsigned;
     end
 
     always_ff @(posedge clk_in) begin
