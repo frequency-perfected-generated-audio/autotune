@@ -38,7 +38,7 @@ module i2s_receiver (
 
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
-            sclk <= 1;  // sclk starts high
+            sclk <= 0;
             ws <= 0;
 
             // Start at end of an I2S period so we reset "into" a new I2S period
@@ -47,9 +47,9 @@ module i2s_receiver (
         end else begin
             // sclk output
             if (sclk_cycle == SCLK_HALF_PERIOD - 1) begin
-                sclk <= 1;
-            end else if (sclk_cycle == SCLK_PERIOD - 1) begin
                 sclk <= 0;
+            end else if (sclk_cycle == SCLK_PERIOD - 1) begin
+                sclk <= 1;
             end
 
             // sclk period
@@ -59,26 +59,31 @@ module i2s_receiver (
                 sclk_cycle <= sclk_cycle + 1;
             end
 
+            // set ws a half sclk cycle before it needs to change
+            if (sclk_cycle == SCLK_HALF_PERIOD - 1) begin
+                if (cycle == I2S_PERIOD - 1) begin
+                    ws <= 0;
+                end else if (cycle == I2S_HALF_PERIOD - 1) begin
+                    ws <= 1;
+                end
+            end
+
             // I2S period
             if (sclk_cycle == SCLK_PERIOD - 1) begin
                 if (cycle == I2S_PERIOD - 1) begin
                     cycle <= 0;
-                    ws <= 0;
                 end else begin
-                    if (cycle == I2S_HALF_PERIOD - 1) begin
-                        ws <= 1;
-                    end
                     cycle <= cycle + 1;
                 end
             end
 
-            // Read in data on halfway point of sclk (happens to be rising edge)
-            if (1 <= cycle && cycle <= 24 && sclk_cycle == SCLK_HALF_PERIOD - 1) begin
+            // Read in data on sclk rising edge
+            if (1 <= cycle && cycle <= 24 && sclk_cycle == 0) begin
                 sdata <= {sdata[22:0], sdata_in};
             end
 
             // Output data one (FPGA) cycle after last bit is received
-            if (cycle == 24 && sclk_cycle == SCLK_HALF_PERIOD) begin
+            if (cycle == 24 && sclk_cycle == 1) begin
                 data_valid_out <= 1;
             end else begin
                 data_valid_out <= 0;
