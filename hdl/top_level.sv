@@ -57,12 +57,12 @@ module top_level (
 
     uart_transmit #(
         .INPUT_CLOCK_FREQ(100_000_000),
-        .MESSAGE_WIDTH(24)
+        .BAUD_RATE(460800)
     ) uart_tx (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        .data_in(raw_mic_debug_data),
+        .data_byte_in(raw_mic_debug_data[23:16]),
         .trigger_in(raw_mic_data_valid),
 
         .busy_out(),
