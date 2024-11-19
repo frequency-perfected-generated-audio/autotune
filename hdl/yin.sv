@@ -10,7 +10,7 @@ module yin #(
     input wire [WIDTH-1:0] sample_in,
     input wire valid_in
 );
-    localparam int unsigned DIFFS_PER_BRAM = 512;
+    localparam int unsigned DIFFS_PER_BRAM = 4;
     localparam int unsigned SAMPLES_PER_BRAM = 2*DIFFS_PER_BRAM;
 
     localparam int unsigned NUM_BRAM = WINDOW_SIZE / SAMPLES_PER_BRAM;
@@ -18,7 +18,16 @@ module yin #(
     localparam int unsigned NUM_BRAM_PORTS = NUM_BRAM*2;
     localparam int unsigned LOG_BRAM_PORTS = LOG_BRAM*2;
 
-    localparam int unsigned TAU_PER_BRAM = TAUMAX / NUM_BRAM;;
+    localparam int unsigned TAU_PER_BRAM = TAUMAX / NUM_BRAM;
+
+    localparam int unsigned NUM_DIV_CYCLES = 7;
+    localparam int unsigned NUM_CUMDIFF_CYCLES = NUM_DIV_CYCLES+4;
+
+    localparam int unsigned FP_WIDTH = 2*WIDTH+10;
+
+    localparam int unsigned CUTOFF_TAU = 1000 << 10;
+    localparam logic[9:0] EARLY_CD = 10'b0001100110;
+
 
     // SAMPLE BRAM CONTROL
     logic [NUM_BRAM-1:0] wen_s;
@@ -33,24 +42,53 @@ module yin #(
     logic [NUM_BRAM_PORTS-1:0][$clog2(TAU_PER_BRAM)-1:0] write_addr_d;
     logic [NUM_BRAM_PORTS-1:0][$clog2(TAU_PER_BRAM)-1:0] read_addr_d;
 
+    // CUMDIFF BRAM CONTROL
+    logic [$clog2(TAU_PER_BRAM)-1:0] read_addr_cd;
+
+    // CUMDIFF OUTPUTS
+    logic [NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] cd_diff;
+    logic [NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] cd_add;
+    logic [NUM_BRAM_PORTS-1:0] cd_div_valid;
+    logic [NUM_BRAM_PORTS-1:0] cd_div_err;
+    logic [NUM_BRAM_PORTS-1:0][FP_WIDTH-1:0] cd_div_out;
+    logic [NUM_BRAM_PORTS-1:0][FP_WIDTH-1:0] cd_div;
+
+    // CUMDIFF MIN FINDING CTRL
+    logic [2*WIDTH-1:0] diff_accum;
+    logic [$clog2(WINDOW_SIZE)-1:0] taumin;
+    logic [NUM_BRAM_PORTS-1:0][$clog2(WINDOW_SIZE)-1:0] next_taumin;
+    logic [FP_WIDTH-1:0] cd_min;
+    logic [NUM_BRAM_PORTS-1:0][FP_WIDTH-1:0] next_cd_min;
+    logic min_reached;
+    logic [NUM_BRAM_PORTS-1:0] next_min_reached;
+    logic [NUM_BRAM_PORTS-1:0] update;
+    logic [NUM_BRAM_PORTS-1:0] early_out;
+
     // STAGE OUTPUTS
     logic [NUM_BRAM_PORTS-1:0][WIDTH-1:0] sample_out;
     logic [NUM_BRAM_PORTS-1:0][WIDTH-1:0] subtracted;
     logic [NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] multiplied;
-    logic [NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] diff_out;
+    logic [NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] diff;
     logic [NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] added;
+
+    // BRAM OUTPUTS - alternate to prevent clobbering
+    logic [1:0][NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] diff_out;
 
     // COUNTERS/PIPELINE CONTROL
     logic processing_sample;
+    logic processing_cd;
     logic [$clog2(WINDOW_SIZE)-1:0] sample;
     logic [WIDTH-1:0] current_sample;
-    logic cycle_toggle;
 
-    logic internal_reset;
-    assign internal_reset = (read_addr_s[5] == WINDOW_SIZE - 2) && (sample == WINDOW_SIZE - 1);
+    logic [$clog2(NUM_CUMDIFF_CYCLES)-1:0] cumdiff_cycles;
+    logic cycle_toggle;
+    logic window_toggle;
 
     logic reset_diff_bram;
-    assign reset_diff_bram = (read_addr_s[2]) == 0 && (sample == 0);
+    assign reset_diff_bram = (read_addr_s[4] == read_addr_s[2]) && (sample == 0);
+
+    logic reset_window;
+    assign reset_window = (read_addr_s[5] == SAMPLES_PER_BRAM - 2) && (sample == WINDOW_SIZE - 1);
 
     logic [$clog2(SAMPLES_PER_BRAM)-1:0] tau_0;
     logic [$clog2(SAMPLES_PER_BRAM)-1:0] tau_1;
@@ -73,8 +111,115 @@ module yin #(
     logic [$clog2(SAMPLES_PER_BRAM)-1:0] test;
     assign test = sample[LOG_BRAM_PORTS-1:0];
 
+    always_comb begin
+        // DIFF/CUMDIFF BRAM MUXING
+        diff = (window_toggle) ? diff_out[1] : diff_out[0];
+        cd_diff = (window_toggle) ? diff_out[0] : diff_out[1];
+
+        for (int i = 0; i < NUM_BRAM_PORTS; i++) begin
+            // STAGE 3 ADDR CALCULATION AND DIFF BRAM MUXING
+            case (sample[LOG_BRAM_PORTS-1:0])
+                2'b00: begin
+                    tau_w[(4-(i)) % 4] = sample - ((read_addr_s[4] << LOG_BRAM) + i);
+                    tau_r[(4-(i)) % 4] = sample - ((read_addr_s[2] << LOG_BRAM) + i);
+                end
+                2'b01: begin
+                    tau_w[(5-(i)) % 4] = sample - ((read_addr_s[4] << LOG_BRAM) + i);
+                    tau_r[(5-(i)) % 4] = sample - ((read_addr_s[2] << LOG_BRAM) + i);
+                end
+                2'b10: begin
+                    tau_w[(6-(i)) % 4] = sample - ((read_addr_s[4] << LOG_BRAM) + i);
+                    tau_r[(6-(i)) % 4] = sample - ((read_addr_s[2] << LOG_BRAM) + i);
+                end
+                2'b11: begin
+                    tau_w[(3-(i))    ] = sample - ((read_addr_s[4] << LOG_BRAM) + i);
+                    tau_r[(3-(i))    ] = sample - ((read_addr_s[2] << LOG_BRAM) + i);
+                end
+            endcase
+
+            // CUMDIFF DIV POSTPROCESS
+            cd_div[i] = (cd_div_err[i] || (cd_div_out[i] > CUTOFF_TAU)) ? 0 : cd_div_out[i];
+        end
+
+        for (int i = 0; i < NUM_BRAM_PORTS; i++) begin
+            // STAGE 2 ADDR CALCULATION
+            read_addr_d[i] = ((tau_r[i] >> LOG_BRAM_PORTS) << 1) + (tau_r[i] & 1'b1);
+        end
+
+
+        update[0] = ((cd_div[0] < cd_min) && !min_reached);
+        early_out[0] = cd_min < EARLY_CD;
+        next_min_reached[0] = (early_out && !(cd_div[0] < cd_min)) || min_reached;
+
+        next_taumin[0] = (update) ? (read_addr_cd << LOG_BRAM) : taumin;
+        next_cd_min[0] = (update) ? cd_div[0] : cd_min;
+
+        for (int i = 1; i < NUM_BRAM_PORTS; i++) begin
+            update[i] = ((cd_div[0] < cd_min) && !next_min_reached[i-1]);
+            early_out[i] = next_cd_min[i-1] < EARLY_CD;
+            next_min_reached[i] = (early_out[i-1] && !(cd_div[i] < cd_min)) || next_min_reached[i-1];
+
+            next_taumin[i] = (update) ? ((read_addr_cd << LOG_BRAM) + i) : next_taumin[i-1];
+            next_cd_min[i] = (update) ? cd_min[i-1] : next_cd_min[i-1];
+        end
+    end
+
+    always_ff @(posedge clk_in) begin
+        if (rst_in || reset_window) begin
+            subtracted <= '0;
+            multiplied <= '0;
+            added <= '0;
+
+            write_addr_d <= '0;
+            wen_d <= '0;
+
+            diff_accum <= '0;
+            taumin <= '0;
+            cd_min <= '0;
+            min_reached <= '0;
+        end else begin
+            for (int i = 0; i < NUM_BRAM_PORTS; i ++) begin
+                // STAGE 2: SUB + MUL
+                subtracted[i] <= (sample_out[i] < current_sample) ? current_sample - sample_out[i] : sample_out[i] - current_sample;
+                multiplied[i] <= subtracted[i]*subtracted[i];
+
+                // STAGE 3 ADD TO DIFF + ADDR CALCULATION
+                case (sample[LOG_BRAM_PORTS-1:0])
+                    2'b00:
+                        added[(4-(i)) % 4] = diff[(4-(i)) % 4] + multiplied[i];
+                    2'b01:
+                        added[(5-(i)) % 4] = diff[(5-(i)) % 4] + multiplied[i];
+                    2'b10:
+                        added[(6-(i)) % 4] = diff[(6-(i)) % 4] + multiplied[i];
+                    2'b11:
+                        added[(3-(i))] = diff[(3-(i))] + multiplied[i];
+                endcase
+
+                write_addr_d[i] <= ((tau_w[i] >> LOG_BRAM_PORTS) << 1) + (tau_w[i] & 1'b1);
+                wen_d[i] <= (tau_w[i] <= sample) && (!cycle_toggle) && (read_addr_s[2] != read_addr_s[4]);
+            end
+
+            // CUMDIFF PREFIX SUM
+            if (cumdiff_cycles == 2) begin
+                cd_add[0] <= diff_accum + cd_diff[0];
+                cd_add[1] <= diff_accum + cd_diff[0] + cd_diff[1];
+                cd_add[2] <= diff_accum + cd_diff[0] + cd_diff[1] + cd_diff[2];
+                cd_add[3] <= diff_accum + cd_diff[0] + cd_diff[1] + cd_diff[2] + cd_diff[3];
+
+                diff_accum <= diff_accum + cd_diff[0] + cd_diff[1] + cd_diff[2] + cd_diff[3];
+            end
+
+            if (cumdiff_cycles == 3 + NUM_DIV_CYCLES) begin
+                diff_accum <= cd_add[NUM_BRAM_PORTS-1];
+                taumin <= next_taumin[NUM_BRAM_PORTS-1];
+                cd_min <= next_cd_min[NUM_BRAM_PORTS-1];
+                min_reached <= next_min_reached[NUM_BRAM_PORTS-1];
+            end
+        end
+    end
+
     generate
-    genvar i;
+    genvar i, window, k;
     for (i = 0; i < NUM_BRAM; i++) begin
         // STAGE 1 READ
         assign wen_s[i] = valid_in && (i == sample[LOG_BRAM_PORTS-1:1]);
@@ -91,7 +236,7 @@ module yin #(
             .wea  (wen_s[i]),
             .douta(sample_out[i*2]),
 
-            .addrb(read_addr_s[0]+1),
+            .addrb(read_addr_s[0]+1'b1),
             .doutb(sample_out[i*2+1]),
 
             .dinb(),
@@ -103,92 +248,55 @@ module yin #(
             .regcea(1'b1),
             .regceb(1'b1)
         );
-        always_comb begin
-            for (int j = 0; j < 2; j++) begin
-                // STAGE 3 ADDR CALCULATION AND DIFF BRAM MUXING
-                case (sample[LOG_BRAM_PORTS-1:0])
-                    2'b00: begin
-                        tau_w[(4-(i*2+j)) % 4] = sample - ((read_addr_s[4] << LOG_BRAM) + i*2+j);
-                        tau_r[(4-(i*2+j)) % 4] = sample - ((read_addr_s[2] << LOG_BRAM) + i*2+j);
-                    end
-                    2'b01: begin
-                        tau_w[(5-(i*2+j)) % 4] = sample - ((read_addr_s[4] << LOG_BRAM) + i*2+j);
-                        tau_r[(5-(i*2+j)) % 4] = sample - ((read_addr_s[2] << LOG_BRAM) + i*2+j);
-                    end
-                    2'b10: begin
-                        tau_w[(6-(i*2+j)) % 4] = sample - ((read_addr_s[4] << LOG_BRAM) + i*2+j);
-                        tau_r[(6-(i*2+j)) % 4] = sample - ((read_addr_s[2] << LOG_BRAM) + i*2+j);
-                    end
-                    2'b11: begin
-                        tau_w[(3-(i*2+j))    ] = sample - ((read_addr_s[4] << LOG_BRAM) + i*2+j);
-                        tau_r[(3-(i*2+j))    ] = sample - ((read_addr_s[2] << LOG_BRAM) + i*2+j);
-                    end
-                endcase
-            end
-
-            for (int j = 0; j < 2; j++) begin
-                // STAGE 2 ADDR CALCULATION
-                read_addr_d[i*2+j] = ((tau_r[i*2+j] >> LOG_BRAM_PORTS) << 1) + (tau_r[i*2+j] & 1'b1);
-            end
-        end
-
-        always_ff @(posedge clk_in) begin
-            if (rst_in) begin
-                subtracted <= '0;
-                multiplied <= '0;
-                added <= '0;
-
-                write_addr_d <= '0;
-                wen_d <= '0;
-            end else begin
-                for (int j = 0; j < 2; j ++) begin
-                    // STAGE 2: SUB + MUL
-                    subtracted[i*2+j] <= (sample_out[i*2+j] < current_sample) ? current_sample - sample_out[i*2+j] : sample_out[i*2+j] - current_sample;
-                    multiplied[i*2+j] <= subtracted[i*2+j]*subtracted[i*2+j];
-
-                    // STAGE 3 ADD TO DIFF + ADDR CALCULATION
-                    case (sample[LOG_BRAM_PORTS-1:0])
-                        2'b00:
-                            added[(4-(i*2+j)) % 4] = diff_out[(4-(i*2+j)) % 4] + multiplied[i*2+j];
-                        2'b01:
-                            added[(5-(i*2+j)) % 4] = diff_out[(5-(i*2+j)) % 4] + multiplied[i*2+j];
-                        2'b10:
-                            added[(6-(i*2+j)) % 4] = diff_out[(6-(i*2+j)) % 4] + multiplied[i*2+j];
-                        2'b11:
-                            added[(3-(i*2+j))] = diff_out[(3-(i*2+j))] + multiplied[i*2+j];
-                    endcase
-
-                    write_addr_d[i*2+j] <= ((tau_w[i*2+j] >> LOG_BRAM_PORTS) << 1) + (tau_w[i*2+j] & 1'b1);
-                    wen_d[i*2+j] <= (tau_w[i*2+j] <= sample) && (!cycle_toggle) && (read_addr_s[2] != 0);
-                end
-            end
-        end
 
         // STAGE 3 WRITEBACK
-        xilinx_true_dual_port_read_first_1_clock_ram #(
-            .RAM_WIDTH(WIDTH*2),
-            .RAM_DEPTH(TAU_PER_BRAM),
-            .RAM_PERFORMANCE("HIGH_PERFORMANCE")
-        ) diff_bram (
-            .clka (clk_in),
+        for (window = 0; window < 2; window ++) begin
+            xilinx_true_dual_port_read_first_1_clock_ram #(
+                .RAM_WIDTH(WIDTH*2),
+                .RAM_DEPTH(TAU_PER_BRAM),
+                .RAM_PERFORMANCE("HIGH_PERFORMANCE")
+            ) diff_bram (
+                .clka (clk_in),
 
-            .addra(wen_d[i*2] ? write_addr_d[i*2] : read_addr_d[i*2]),
-            .wea  (wen_d[i*2]),
-            .dina (added[i*2]),
-            .douta(diff_out[i*2]),
-            .rsta(reset_diff_bram),
+                .addra((window != window_toggle) ? (read_addr_cd) : wen_d[i*2] ? write_addr_d[i*2] : read_addr_d[i*2]),
+                .wea  ((window == window_toggle) && wen_d[i*2]),
+                .dina (added[i*2]),
+                .douta(diff_out[window][i*2]),
+                .rsta(reset_diff_bram && (window == window_toggle)),
 
-            .addrb(wen_d[i*2+1] ? write_addr_d[i*2+1] : read_addr_d[i*2+1]),
-            .web(wen_d[i*2+1]),
-            .dinb (added[i*2+1]),
-            .doutb(diff_out[i*2+1]),
-            .rstb(reset_diff_bram),
+                .addrb((window != window_toggle) ? (read_addr_cd + 1'b1) : wen_d[i*2+1] ? write_addr_d[i*2+1] : read_addr_d[i*2+1]),
+                .web((window == window_toggle) && wen_d[i*2+1]),
+                .dinb (added[i*2+1]),
+                .doutb(diff_out[window][i*2+1]),
+                .rstb(reset_diff_bram && (window == window_toggle)),
 
-            .ena(1'b1),
-            .enb(1'b1),
-            .regcea(1'b1),
-            .regceb(1'b1)
-        );
+                .ena(1'b1),
+                .enb(1'b1),
+                .regcea(1'b1),
+                .regceb(1'b1)
+            );
+        end
+
+        // CUMDIFF CALCULATION
+        for (k = 0; k < 2; k ++) begin
+            fp_div #(
+                .WIDTH(FP_WIDTH),
+                .FRACTION_WIDTH(10),
+                .NUM_STAGES(NUM_DIV_CYCLES)
+            ) u_fp_div (
+                .clk_in(clk_in),
+                .rst_in(rst_in),
+
+                .dividend_in({cd_diff[i*2+k], 10'b0}),
+                .divisor_in({cd_add[i*2+k], 10'b0}),
+                .valid_in(cumdiff_cycles == 3),
+
+                .quotient_out(cd_div_out[i*2+k]),
+                .valid_out(cd_div_valid[i*2+k]),
+                .err_out(cd_div_err[i*2+k]),
+                .busy()
+            );
+        end
 
     end
     endgenerate
@@ -197,23 +305,34 @@ module yin #(
     assign top_read_addr = read_addr_s[5];
 
     always_ff @(posedge clk_in) begin
-        if (rst_in || internal_reset) begin
-            sample <= 0;
-            current_sample <= '0;
+        if (rst_in || (read_addr_s[5] == SAMPLES_PER_BRAM-2)) begin
             processing_sample <= 0;
             cycle_toggle <= 0;
 
             read_addr_s <= '0;
+        end
+        if (rst_in || reset_window) begin
+            sample <= '0;
+            current_sample <= '0;
+
+            cumdiff_cycles <= '0;
+            read_addr_cd <= '0;
+            processing_cd <= 0;
+        end
+
+        if (rst_in) begin
+            window_toggle <= 0;
+        end else if ((read_addr_s[5] == SAMPLES_PER_BRAM - 2) && (sample == WINDOW_SIZE - 1)) begin
+            window_toggle <= ~window_toggle;
         end else begin
             if (valid_in) begin
                 current_sample <= sample_in;
                 processing_sample <= 1;
-            end else if (processing_sample && (read_addr_s[5] == SAMPLES_PER_BRAM - 2)) begin
-                sample <= sample + 1;
-                processing_sample <= 0;
-                cycle_toggle <= 0;
+                processing_cd <= 1;
+            end
 
-                read_addr_s <= '0;
+            if (read_addr_s[5] == SAMPLES_PER_BRAM - 2) begin
+                sample <= sample + 1;
             end else if (processing_sample) begin
                 cycle_toggle <= ~cycle_toggle;
 
@@ -221,6 +340,11 @@ module yin #(
                 for (int i = 1; i < 6; i++) begin
                     read_addr_s[i] <= read_addr_s[i-1];
                 end
+            end
+
+            if (processing_cd) begin
+                cumdiff_cycles <= (cumdiff_cycles == NUM_CUMDIFF_CYCLES - 1) ? 0 : cumdiff_cycles + 1;
+                read_addr_cd <= read_addr_cd + ((cumdiff_cycles == NUM_CUMDIFF_CYCLES-1) << 1); // 2 brams
             end
         end
     end
