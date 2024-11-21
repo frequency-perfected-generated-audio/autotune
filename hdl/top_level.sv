@@ -37,19 +37,22 @@ module top_level (
         .data_valid_out(raw_mic_data_valid)
     );
 
-    logic [7:0] sample;
+    logic [15:0] sample;
     always_ff @(posedge clk_100mhz) begin
         if (raw_mic_data_valid) begin
-            sample <= raw_mic_data >> 8;
+            sample <= raw_mic_data;
         end
     end
 
     logic spk_out;
-    pwm audio_generator (
-        .clk_in (clk_100mhz),
-        .rst_in (sys_rst),
-        .dc_in  (sample),
-        .sig_out(spk_out)
+
+    pdm #(
+        .NBITS(16)
+    ) audio_generator (
+        .clk_in(clk_100mhz),
+        .d_in  (sample),
+        .rst_in(sys_rst),
+        .d_out (spk_out)
     );
     assign spkl = spk_out;
     assign spkr = spk_out;
@@ -63,7 +66,7 @@ module top_level (
         .rst_in(sys_rst),
 
         .data_byte_in(raw_mic_debug_data[23:16]),
-        .trigger_in(raw_mic_data_valid),
+        .trigger_in  (raw_mic_data_valid),
 
         .busy_out(),
         .tx_wire_out(uart_txd)
