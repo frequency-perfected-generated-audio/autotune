@@ -103,7 +103,6 @@ async def test_cumdiff(dut, iteration, window_idx):
         assert index(dut.cd_diff.value, x, 2*WIDTH) == diff[iteration*4+x], f"incorrect diff data out for index {x}"
 
     # RESULTS OF ADD
-    print(prefix_sum[7])
     await ClockCycles(dut.clk_in, 1, rising=False)
     for x in range(4):
         assert index(dut.cd_add.value, x, 2*WIDTH) == prefix_sum[iteration*4+x], f"incorrect addition for index {x}"
@@ -129,20 +128,20 @@ async def test_yin(dut):
     await ClockCycles(dut.clk_in, 2)
     dut.rst_in.value = 0
 
-    # sample_in = 31
-    # sample_read = 25
+    sample_in = 31
+    sample_read = 25
 
-    # assert (sample_in // WINDOW_SIZE == sample_read // WINDOW_SIZE), "samples not in same window"
+    assert (sample_in // WINDOW_SIZE == sample_read // WINDOW_SIZE), "samples not in same window"
 
-    # for _ in range(sample_in+1):
-    #     await RisingEdge(dut.valid_in)
+    #for _ in range(sample_in+1):
+    #    await RisingEdge(dut.valid_in)
 
-    # await FallingEdge(dut.clk_in) # Receive the sample_in here
+    #await FallingEdge(dut.clk_in) # Receive the sample_in here
 
-    # await FallingEdge(dut.clk_in)
-    # assert dut.current_sample.value == random_window[sample_in // WINDOW_SIZE][sample_in % WINDOW_SIZE], "not loading current sample"
-    # await ClockCycles(dut.clk_in, ((sample_read % WINDOW_SIZE) // 4)*2, rising=False)
-    # await test_sample_pipeline(dut, sample_read, sample_in)
+    #await FallingEdge(dut.clk_in)
+    #assert dut.current_sample.value == random_window[sample_in // WINDOW_SIZE][sample_in % WINDOW_SIZE], "not loading current sample"
+    #await ClockCycles(dut.clk_in, ((sample_read % WINDOW_SIZE) // 4)*2, rising=False)
+    #await test_sample_pipeline(dut, sample_read, sample_in)
 
     window_idx = 2
     iteration = 2
