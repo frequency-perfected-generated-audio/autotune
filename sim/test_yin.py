@@ -21,10 +21,12 @@ CYCLES = WINDOW_SIZE
 S_ADDR_WIDTH = int(math.log2(TAUMAX/2))
 D_ADDR_WIDTH = int(math.log2(TAUMAX/2))
 
+TAU_WIDTH = int(math.log2(TAUMAX))
+
 FRACTION_WIDTH = 10
 FP_WIDTH = WIDTH*2+FRACTION_WIDTH
 
-NUM_WINDOWS = 3
+NUM_WINDOWS = 4
 
 random_window = [[random.randrange(0, 2**8-1) for _ in range(WINDOW_SIZE)] for _ in range(NUM_WINDOWS)]
 async def send_window(dut):
@@ -51,7 +53,7 @@ def to_fp(value):
         accum += 2**x * digit
         value -= 2**(x - FRACTION_WIDTH) * digit
 
-    return hex(accum)
+    return int(hex(accum), 16)
 
 async def test_sample_pipeline(dut, sample_read, sample_in):
     bram_port_idx_s = (sample_read % WINDOW_SIZE) % 4
@@ -100,11 +102,21 @@ async def test_cumdiff(dut, iteration, window_idx):
     diff = [sum((window[s1] - window[s2])**2 for s1 in range(WINDOW_SIZE) for s2 in range(s1) if (s1-s2) == x) for x in range(WINDOW_SIZE)]
     prefix_sum = [sum(diff[:x+1]) for x in range(WINDOW_SIZE)]
 
-    div = [diff[x] / prefix_sum[x] if prefix_sum[x] != 0 else 0 for x in range(WINDOW_SIZE)]
-    div = [d if d <= 1000 else 0 for d in div]
+    div = [diff[x] / prefix_sum[x] if prefix_sum[x] != 0 else (1<<FP_WIDTH)-1 for x in range(WINDOW_SIZE)]
     div = list(map(to_fp, div))
 
     mins = [(min(div[:x+1]), np.argmin(div[:x+1])) for x in range(WINDOW_SIZE)]
+    early_out = [False] + [min < 0b0001100110 for min, _ in mins[:-1]]
+
+    final_mins = []
+    min_reached = [False]
+    for i in range(WINDOW_SIZE):
+        if i > 0:
+            min_reached.append((early_out[i] and div[i] >= mins[i-1][0]) or min_reached[-1])
+        if not min_reached[-1]:
+            final_mins.append(mins[i])
+        else:
+            final_mins.append(final_mins[-1])
 
     # RESULTS OF READ
     await ClockCycles(dut.clk_in, 3, rising=False)
@@ -119,17 +131,32 @@ async def test_cumdiff(dut, iteration, window_idx):
     # RESULTS OF DIV
     await ClockCycles(dut.clk_in, 7, rising=False)
     for x in range(4):
-        assert hex(index(dut.cd_div.value, x, FP_WIDTH)) == div[iteration*4+x], f"incorrect division for index {x}"
+        if iteration*4+x != 0:
+            actual_div = index(dut.cd_div_out.value, x, FP_WIDTH)
+            expected_div = div[iteration*4+x]
+            assert expected_div == actual_div, f"expected {expected_div}, got {actual_div} for div index {x}"
 
     # RESULTS OF CMP
-    await ClockCycles(dut.clk_in, 1, rising=False)
-    for x in range(2):
-        assert hex(index(dut.next_cd_min.value, x, FP_WIDTH)) == mins[iteration*4+x][0], f"incorrect min for index {x}"
-        assert index(dut.next_taumin.value, x, D_ADDR_WIDTH) == mins[iteration*4+x][1], f"incorrect argmin for index {x}"
-    await ClockCycles(dut.clk_in, 1, rising=False)
-    for x in range(2):
-        assert hex(index(dut.next_cd_min.value, x, FP_WIDTH)) == mins[iteration*4+x][0], f"incorrect min for index {x}"
-        assert index(dut.next_taumin.value, x, D_ADDR_WIDTH) == mins[iteration*4+x][1], f"incorrect argmin for index {x}"
+    for y in range(2):
+        for x in range(2):
+            actual_eo = index(dut.early_out.value, x, 1)
+            expected_eo = early_out[iteration*4+y*2+x]
+            assert actual_eo == expected_eo, f"expected {expected_eo}, got {actual_eo} for early_out index {y*2+x}"
+
+            actual_mr = index(dut.next_min_reached.value, x, 1)
+            expected_mr = min_reached[iteration*4+y*2+x]
+            assert actual_mr == expected_mr, f"expected {expected_mr}, got {actual_mr} for min_reached index {y*2+x}"
+
+            actual_min = index(dut.next_cd_min.value, x, FP_WIDTH)
+            expected_min = final_mins[iteration*4+y*2+x][0]
+            if iteration*4+y*2+x != 0:
+                assert actual_min == expected_min, f"expected {hex(expected_min)}, got {hex(actual_min)} for min index {y*2+x}"
+
+            actual_argmin = index(dut.next_taumin.value, x, TAU_WIDTH)
+            expected_argmin = final_mins[iteration*4+y*2+x][1]
+            assert actual_argmin == expected_argmin, f"expected {expected_argmin}, got {actual_argmin} for argmin index {y*2+x}"
+        if y == 0:
+            await ClockCycles(dut.clk_in, 1, rising=False)
 
 @cocotb.test()
 async def test_yin(dut):
