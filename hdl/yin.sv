@@ -2,6 +2,7 @@
 module yin #(
     parameter WIDTH = 16,
     parameter WINDOW_SIZE = 2048,
+    parameter DIFFS_PER_BRAM = 512,
     parameter TAUMAX = 2048
 ) (
     input wire clk_in,
@@ -13,7 +14,6 @@ module yin #(
     output logic valid_out,
     output logic [$clog2(TAUMAX)-1:0] taumin
 );
-    localparam int unsigned DIFFS_PER_BRAM = 512;
     localparam int unsigned SAMPLES_PER_BRAM = 2*DIFFS_PER_BRAM;
 
     localparam int unsigned NUM_BRAM = WINDOW_SIZE / SAMPLES_PER_BRAM;
@@ -69,7 +69,7 @@ module yin #(
     logic [2*WIDTH-1:0] diff_accum;
     logic [NUM_BRAM-1:0][$clog2(TAUMAX)-1:0] next_taumin;
     logic [FP_WIDTH-1:0] cd_min;
-    logic [NUM_BRAM_PORTS-1:0][FP_WIDTH-1:0] next_cd_min;
+    logic [NUM_BRAM-1:0][FP_WIDTH-1:0] next_cd_min;
     logic min_reached;
     logic [NUM_BRAM-1:0] next_min_reached;
     logic [NUM_BRAM-1:0] update;
@@ -84,9 +84,6 @@ module yin #(
 
     // BRAM OUTPUTS - alternate to prevent clobbering
     logic [1:0][NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] diff_out;
-
-    logic reset_diff_bram;
-    assign reset_diff_bram = (read_addr_s[4] == read_addr_s[2]) && (sample == 0);
 
     logic reset_window;
     assign reset_window = (read_addr_s[5] == SAMPLES_PER_BRAM - 2) && (sample == WINDOW_SIZE - 1);
@@ -189,10 +186,7 @@ module yin #(
                 cd_add[3] <= diff_accum + cd_diff[0] + cd_diff[1] + cd_diff[2] + cd_diff[3];
 
                 diff_accum <= diff_accum + cd_diff[0] + cd_diff[1] + cd_diff[2] + cd_diff[3];
-            end
-
-            if ((cumdiff_cycles == 3 + NUM_DIV_CYCLES) || (cumdiff_cycles == 4 + NUM_DIV_CYCLES)) begin
-                diff_accum <= cd_add[NUM_BRAM-1];
+            end else if ((cumdiff_cycles == 3 + NUM_DIV_CYCLES) || (cumdiff_cycles == 4 + NUM_DIV_CYCLES)) begin
                 taumin <= next_taumin[NUM_BRAM-1];
                 cd_min <= next_cd_min[NUM_BRAM-1];
                 min_reached <= next_min_reached[NUM_BRAM-1];
@@ -249,13 +243,13 @@ module yin #(
                 .wea  ((window == window_toggle) && wen_d[i*2]),
                 .dina (added[i*2]),
                 .douta(diff_out[window][i*2]),
-                .rsta(reset_diff_bram && (window == window_toggle)),
+                .rsta((tau_r[i*2] == sample) && (window == window_toggle)),
 
                 .addrb((window != window_toggle) ? (read_addr_cd + 1'b1) : wen_d[i*2+1] ? write_addr_d[i*2+1] : read_addr_d[i*2+1]),
                 .web((window == window_toggle) && wen_d[i*2+1]),
                 .dinb (added[i*2+1]),
                 .doutb(diff_out[window][i*2+1]),
-                .rstb(reset_diff_bram && (window == window_toggle)),
+                .rstb((tau_r[i*2+1] == sample) && (window == window_toggle)),
 
                 .ena(1'b1),
                 .enb(1'b1),
@@ -320,8 +314,6 @@ module yin #(
                 current_sample <= sample_in;
                 processing_sample <= 1;
                 processing_cd <= 1;
-            end else if (valid_out) begin
-                processing_cd <= 0;
             end
 
             if (read_addr_s[5] == SAMPLES_PER_BRAM - 2) begin

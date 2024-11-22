@@ -9,32 +9,37 @@ from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 
 import random
 import numpy as np
+import math
 
 WIDTH = 16
-WINDOW_SIZE = 16
-TAUMAX = 16
+WINDOW_SIZE = 512
+TAUMAX = WINDOW_SIZE
+DIFFS_PER_BRAM = WINDOW_SIZE / 4
 
-CYCLES = 64
+CYCLES = WINDOW_SIZE
 
-S_ADDR_WIDTH = 3
-D_ADDR_WIDTH = 3
+S_ADDR_WIDTH = int(math.log2(TAUMAX/2))
+D_ADDR_WIDTH = int(math.log2(TAUMAX/2))
 
 FRACTION_WIDTH = 10
 FP_WIDTH = WIDTH*2+FRACTION_WIDTH
 
-random_window = [[random.randrange(0, 2**8-1) for _ in range(WINDOW_SIZE)] for _ in range(3)]
+NUM_WINDOWS = 3
+
+random_window = [[random.randrange(0, 2**8-1) for _ in range(WINDOW_SIZE)] for _ in range(NUM_WINDOWS)]
 async def send_window(dut):
-    await ClockCycles(dut.clk_in, 2)
-    for rw in random_window:
-        for sample in rw:
-            dut.sample_in.value = sample
-            dut.valid_in.value = 1
+    while True:
+        await ClockCycles(dut.clk_in, 5)
+        for rw in random_window:
+            for sample in rw:
+                dut.sample_in.value = sample
+                dut.valid_in.value = 1
 
-            await RisingEdge(dut.clk_in)
-            dut.sample_in.value = 0xDEAD
-            dut.valid_in.value = 0
+                await RisingEdge(dut.clk_in)
+                dut.sample_in.value = 0xDEAD
+                dut.valid_in.value = 0
 
-            await ClockCycles(dut.clk_in, CYCLES - 1)
+                await ClockCycles(dut.clk_in, CYCLES - 1)
 
 def index(value, index, width):
     return (value >> (index*width)) & ((1<<width)-1);
@@ -51,17 +56,18 @@ def to_fp(value):
 async def test_sample_pipeline(dut, sample_read, sample_in):
     bram_port_idx_s = (sample_read % WINDOW_SIZE) % 4
 
-    bram_port_idx_d = abs(sample_in - sample_read) % 4
+    bram_port_idx_d = (sample_in - sample_read) % 4
     read_addr_d = (abs(sample_in - sample_read) // 4) * 2 + (bram_port_idx_d % 2)
 
     valid = sample_read <= sample_in
 
     # SHOULD SEE RESULTS OF STAGE 1 HERE
-    await ClockCycles(dut.clk_in, 2, rising=False)
-
     if valid:
-        assert index(dut.sample_out.value, bram_port_idx_s, WIDTH) == random_window[sample_read // WINDOW_SIZE][sample_read % WINDOW_SIZE], "expected bram output"
-        assert index(dut.read_addr_d.value, bram_port_idx_d, D_ADDR_WIDTH) == read_addr_d, "wrong diff BRAM read address"
+        sample_out = index(dut.sample_out.value, bram_port_idx_s, WIDTH)
+        expected_sample_out = random_window[sample_read // WINDOW_SIZE][sample_read % WINDOW_SIZE]
+        assert expected_sample_out == sample_out, f"expected {hex(expected_sample_out)}, got {hex(sample_out)} for port {bram_port_idx_s}"
+        diff_addr = index(dut.read_addr_d.value, bram_port_idx_d, D_ADDR_WIDTH)
+        assert diff_addr == read_addr_d, f"expected {hex(read_addr_d)}, got {hex(diff_addr)} for port {bram_port_idx_d}"
 
     # RESULTS OF SUBTRACT
     sub = abs(random_window[sample_read // WINDOW_SIZE][sample_read % WINDOW_SIZE] - random_window[sample_in // WINDOW_SIZE][sample_in % WINDOW_SIZE])
@@ -82,6 +88,9 @@ async def test_sample_pipeline(dut, sample_read, sample_in):
         assert index(dut.added.value, bram_port_idx_d, 2*WIDTH) == diff_so_far + sub**2, "expected addition result"
         assert index(dut.write_addr_d.value, bram_port_idx_d, D_ADDR_WIDTH) == read_addr_d, "wrong diff BRAM write address"
     assert index(dut.wen_d.value, bram_port_idx_d, 1) == valid, "wrong diff BRAM write enable"
+
+    # Cycle align
+    await ClockCycles(dut.clk_in, 1, rising=False)
 
 async def test_cumdiff(dut, iteration, window_idx):
     if window_idx == 0:
@@ -108,13 +117,17 @@ async def test_cumdiff(dut, iteration, window_idx):
         assert index(dut.cd_add.value, x, 2*WIDTH) == prefix_sum[iteration*4+x], f"incorrect addition for index {x}"
 
     # RESULTS OF DIV
-    await ClockCycles(dut.clk_in, 6, rising=False)
+    await ClockCycles(dut.clk_in, 7, rising=False)
     for x in range(4):
         assert hex(index(dut.cd_div.value, x, FP_WIDTH)) == div[iteration*4+x], f"incorrect division for index {x}"
 
-    # RESULTS OF CNP
+    # RESULTS OF CMP
     await ClockCycles(dut.clk_in, 1, rising=False)
-    for x in range(4):
+    for x in range(2):
+        assert hex(index(dut.next_cd_min.value, x, FP_WIDTH)) == mins[iteration*4+x][0], f"incorrect min for index {x}"
+        assert index(dut.next_taumin.value, x, D_ADDR_WIDTH) == mins[iteration*4+x][1], f"incorrect argmin for index {x}"
+    await ClockCycles(dut.clk_in, 1, rising=False)
+    for x in range(2):
         assert hex(index(dut.next_cd_min.value, x, FP_WIDTH)) == mins[iteration*4+x][0], f"incorrect min for index {x}"
         assert index(dut.next_taumin.value, x, D_ADDR_WIDTH) == mins[iteration*4+x][1], f"incorrect argmin for index {x}"
 
@@ -128,29 +141,33 @@ async def test_yin(dut):
     await ClockCycles(dut.clk_in, 2)
     dut.rst_in.value = 0
 
-    sample_in = 31
-    sample_read = 25
-
-    assert (sample_in // WINDOW_SIZE == sample_read // WINDOW_SIZE), "samples not in same window"
-
-    #for _ in range(sample_in+1):
-    #    await RisingEdge(dut.valid_in)
-
-    #await FallingEdge(dut.clk_in) # Receive the sample_in here
-
-    #await FallingEdge(dut.clk_in)
-    #assert dut.current_sample.value == random_window[sample_in // WINDOW_SIZE][sample_in % WINDOW_SIZE], "not loading current sample"
-    #await ClockCycles(dut.clk_in, ((sample_read % WINDOW_SIZE) // 4)*2, rising=False)
-    #await test_sample_pipeline(dut, sample_read, sample_in)
-
-    window_idx = 2
-    iteration = 2
-    for _ in range(window_idx*WINDOW_SIZE + 1):
+    # Testing diff portion
+    for sample_in in range(NUM_WINDOWS*WINDOW_SIZE):
         await RisingEdge(dut.valid_in)
-    await FallingEdge(dut.clk_in) # Receive the sample_in here
 
-    await ClockCycles(dut.clk_in, iteration*11, rising=False)
-    await test_cumdiff(dut, iteration, window_idx)
+        await FallingEdge(dut.clk_in) # Receive the sample_in here
+
+        await ClockCycles(dut.clk_in, 3, rising=False)
+        for iteration in range(0, WINDOW_SIZE, 4*2):
+            await test_sample_pipeline(dut, (sample_in // WINDOW_SIZE)*WINDOW_SIZE + random.randrange(4) + iteration, sample_in)
+
+
+    dut.rst_in.value = 1
+    await ClockCycles(dut.clk_in, 2)
+    dut.rst_in.value = 0
+
+    # Testing cumdiff portion
+    for window_idx in range(NUM_WINDOWS-1):
+        await RisingEdge(dut.valid_in)
+        await FallingEdge(dut.clk_in) # Receive the sample_in here
+
+        for iteration in range(WINDOW_SIZE // 4):
+            await test_cumdiff(dut, iteration, window_idx)
+
+        if dut.window_toggle.value == 0:
+            await RisingEdge(dut.window_toggle)
+        else:
+            await FallingEdge(dut.window_toggle)
 
 
 def main():
@@ -164,7 +181,7 @@ def main():
         proj_path / "hdl" / "fp_div.sv"
     ]
     build_test_args = ["-Wall"]
-    parameters = {"WIDTH" : WIDTH, "TAUMAX" : TAUMAX, "WINDOW_SIZE" : WINDOW_SIZE }
+    parameters = {"WIDTH" : WIDTH, "TAUMAX" : TAUMAX, "WINDOW_SIZE" : WINDOW_SIZE, "DIFFS_PER_BRAM" : DIFFS_PER_BRAM }
     sys.path.append(str(proj_path / "sim"))
     runner = get_runner(sim)
     runner.build(
