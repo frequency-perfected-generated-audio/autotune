@@ -1,17 +1,29 @@
 `default_nettype wire
 module top_level (
-    input  wire        clk_100mhz,
-    input  wire  [3:0] btn,
-    output logic       spkl,
-    spkr,
+    input wire       clk_100mhz,
+    input wire [3:0] btn,
 
-    // I2S signals
+    // Speaker Signals
+    output logic spkl,
+    output logic spkr,
+
+    // I2S Signals
     input  wire  sdata,
     output logic sclk,
     output logic ws,
 
     // UART Signals
-    output logic uart_txd
+    output logic uart_txd,
+
+    // Seven Segment Display Signals
+    output logic [3:0] ss0_an,
+    output logic [3:0] ss1_an,
+    output logic [6:0] ss0_c,
+    output logic [6:0] ss1_c,
+
+    // RGB Signals
+    output logic [2:0] rgb0,
+    output logic [2:0] rgb1
 );
 
     logic sys_rst;
@@ -72,6 +84,50 @@ module top_level (
         .tx_wire_out(uart_txd)
 
     );
+
+    logic [10:0] raw_taumin;
+    logic raw_taumin_valid;
+    yin #(
+        .WIDTH(16),
+        .WINDOW_SIZE(2048),
+        .DIFFS_PER_BRAM(512),
+        .TAUMAX(2048)
+    ) yin (
+        .clk_in(clk_100mhz),
+        .rst_in(sys_rst),
+
+        .sample_in(raw_mic_data),
+        .valid_in (raw_mic_data_valid),
+
+        .valid_out(raw_taumin_valid),
+        .taumin(raw_taumin)
+    );
+    logic [10:0] taumin;
+    always_ff @(posedge clk_100mhz) begin
+        if (raw_taumin_valid) begin
+            taumin <= raw_taumin;
+        end
+    end
+
+    // Show taumin on seven segment display
+    logic [6:0] ss_c;
+    seven_segment_controller #(
+        .COUNT_PERIOD(100000)
+    ) seven_seg (
+        .clk_in (clk_100mhz),
+        .rst_in (sys_rst),
+        .val_in ({raw_taumin_valid, 20'b0, taumin}),
+        .cat_out(ss_c),
+        .an_out ({ss0_an, ss1_an})
+    );
+    assign ss0_c = ss_c;
+    assign ss1_c = ss_c;
+
+    // Make LEDs green if taumin is valid
+    always_comb begin
+        rgb0 = raw_taumin_valid ? 3'b010 : '0;
+        rgb1 = raw_taumin_valid ? 3'b010 : '0;
+    end
 
 endmodule
 
