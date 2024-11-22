@@ -77,8 +77,8 @@ module top_level (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        .data_byte_in(raw_mic_debug_data[23:16]),
-        .trigger_in  (raw_mic_data_valid),
+        .data_byte_in(raw_taumin[7:0]),
+        .trigger_in  (raw_taumin_valid),
 
         .busy_out(),
         .tx_wire_out(uart_txd)
@@ -123,10 +123,11 @@ module top_level (
     assign ss0_c = ss_c;
     assign ss1_c = ss_c;
 
-    // Make LEDs green if taumin is valid
-    always_comb begin
-        rgb0 = raw_taumin_valid ? 3'b010 : '0;
-        rgb1 = raw_taumin_valid ? 3'b010 : '0;
+    always_ff @(posedge clk_100mhz) begin
+        if (raw_taumin_valid) begin
+            rgb0 <= 3'b010;
+            rgb1 <= 3'b010;
+        end
     end
 
 endmodule
