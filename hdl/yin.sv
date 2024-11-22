@@ -88,7 +88,7 @@ module yin #(
     logic reset_window;
     assign reset_window = (read_addr_s[5] == SAMPLES_PER_BRAM - 2) && (sample == WINDOW_SIZE - 1);
 
-    assign valid_out = read_addr_cd == TAU_PER_BRAM;
+    assign valid_out = (read_addr_cd == TAU_PER_BRAM - 2) && (cumdiff_cycles == NUM_CUMDIFF_CYCLES - 1);
 
     always_comb begin
         // DIFF/CUMDIFF BRAM MUXING
@@ -313,7 +313,9 @@ module yin #(
             if (valid_in) begin
                 current_sample <= sample_in;
                 processing_sample <= 1;
-                processing_cd <= 1;
+                if (sample == 0) begin
+                    processing_cd <= 1;
+                end
             end
 
             if (read_addr_s[5] == SAMPLES_PER_BRAM - 2) begin
