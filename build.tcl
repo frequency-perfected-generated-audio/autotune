@@ -62,8 +62,8 @@ report_utilization -file $outputDir/post_synth_util.rpt -hierarchical -hierarchi
 report_timing -file $outputDir/post_synth_timing.rpt
 
 #run optimization
-opt_design
-place_design
+opt_design -directive Explore
+place_design -directive Explore
 report_clock_utilization -file $outputDir/clock_util.rpt
 
 #get timing violations and run optimizations if needed
