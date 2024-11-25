@@ -170,13 +170,13 @@ module yin #(
                 // STAGE 3 ADD TO DIFF + ADDR CALCULATION
                 case (sample[LOG_BRAM_PORTS-1:0])
                     2'b00:
-                        added[(4-(i)) % 4] = diff[(4-(i)) % 4] + multiplied[i];
+                        added[(4-(i)) % 4] <= diff[(4-(i)) % 4] + multiplied[i];
                     2'b01:
-                        added[(5-(i)) % 4] = diff[(5-(i)) % 4] + multiplied[i];
+                        added[(5-(i)) % 4] <= diff[(5-(i)) % 4] + multiplied[i];
                     2'b10:
-                        added[(6-(i)) % 4] = diff[(6-(i)) % 4] + multiplied[i];
+                        added[(6-(i)) % 4] <= diff[(6-(i)) % 4] + multiplied[i];
                     default:
-                        added[(3-(i))] = diff[(3-(i))] + multiplied[i];
+                        added[(3-(i))] <= diff[(3-(i))] + multiplied[i];
                 endcase
 
                 write_addr_d[i] <= ((tau_w[i] >> LOG_BRAM_PORTS) << 1) + (tau_w[i] & 1'b1);
