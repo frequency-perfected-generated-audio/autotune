@@ -161,8 +161,6 @@ module yin #(
             min_reached <= '0;
             cd_div_overflow <= '0;
             cd_div_err_ovfl <= '0;
-
-            valid_out <= 0;
         end else begin
             for (int i = 0; i < NUM_BRAM_PORTS; i ++) begin
                 // STAGE 2: SUB + MUL
