@@ -77,7 +77,7 @@ module top_level (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        .data_byte_in(raw_taumin[7:0]),
+        .data_byte_in(raw_taumin[10:3]),
         .trigger_in  (raw_taumin_valid),
 
         .busy_out(),
