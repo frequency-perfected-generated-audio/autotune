@@ -63,7 +63,7 @@ report_timing -file $outputDir/post_synth_timing.rpt
 
 #run optimization
 opt_design -directive Explore
-place_design -directive Explore
+place_design -directive ExtraTimingOpt
 report_clock_utilization -file $outputDir/clock_util.rpt
 
 #get timing violations and run optimizations if needed
