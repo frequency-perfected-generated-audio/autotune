@@ -44,7 +44,7 @@ module yin #(
     // SAMPLE BRAM CONTROL
     logic [NUM_BRAM-1:0] wen_s;
     logic [$clog2(SAMPLES_PER_BRAM)-1:0] write_addr_s;
-    assign write_addr_s = ((sample >> LOG_BRAM_PORTS) << 1) + sample[LOG_BRAM-1:0];
+    assign write_addr_s = ((sample >> LOG_BRAM_PORTS) << 1) + sample[0];
     logic [5:0][$clog2(SAMPLES_PER_BRAM)-1:0] read_addr_s;
 
     // DIFF BRAM CONTROL
@@ -59,9 +59,10 @@ module yin #(
 
     // CUMDIFF OUTPUTS
     logic [NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] cd_diff;
+    logic [NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] cd_diff_pipe;
+
     logic [NUM_BRAM_PORTS-1:0][2*WIDTH-1:0] cd_add;
     logic [NUM_BRAM_PORTS-1:0] cd_div_valid;
-
     logic [NUM_BRAM_PORTS-1:0] cd_div_err_out;
     logic [NUM_BRAM-1:0] cd_div_err_ovfl;
     logic [NUM_BRAM-1:0] cd_div_err;
@@ -71,7 +72,8 @@ module yin #(
     logic [NUM_BRAM-1:0][FP_WIDTH-1:0] cd_div;
 
     // CUMDIFF MIN FINDING CTRL
-    logic [2*WIDTH-1:0] diff_accum;
+    logic cmp_cycle_select;
+    assign cmp_cycle_select = (cumdiff_cycles == NUM_DIV_CYCLES + 3);
     logic [NUM_BRAM-1:0][$clog2(TAUMAX)-1:0] next_taumin;
     logic [FP_WIDTH-1:0] cd_min;
     logic [NUM_BRAM-1:0][FP_WIDTH-1:0] next_cd_min;
@@ -120,8 +122,8 @@ module yin #(
             endcase
         end
 
-        cd_div = (cumdiff_cycles == 2 + NUM_DIV_CYCLES) ? cd_div_out[0 +: NUM_BRAM] : cd_div_overflow;
-        cd_div_err = (cumdiff_cycles == 2 + NUM_DIV_CYCLES) ? cd_div_err_out[0 +: NUM_BRAM] : cd_div_err_ovfl;
+        cd_div = (cmp_cycle_select) ? cd_div_overflow : cd_div_out[0 +: NUM_BRAM];
+        cd_div_err = (cmp_cycle_select) ? cd_div_err_ovfl: cd_div_err_out[0 +: NUM_BRAM];
 
         for (int i = 0; i < NUM_BRAM_PORTS; i++) begin
             // STAGE 2 ADDR CALCULATION
@@ -133,7 +135,7 @@ module yin #(
         early_out[0] = cd_min < EARLY_CD;
         next_min_reached[0] = (early_out[0] && !update[0]) || min_reached;
 
-        next_taumin[0] = (update[0]) ? (read_addr_cd << LOG_BRAM) + ((cumdiff_cycles == 3 + NUM_DIV_CYCLES) << 1) : taumin;
+        next_taumin[0] = (update[0]) ? (read_addr_cd << LOG_BRAM) + ((cmp_cycle_select) << 1) : taumin;
         next_cd_min[0] = (update[0]) ? cd_div[0] : cd_min;
 
         for (int i = 1; i < NUM_BRAM; i++) begin
@@ -141,7 +143,7 @@ module yin #(
             early_out[i] = next_cd_min[i-1] < EARLY_CD;
             next_min_reached[i] = (early_out[i] && !update[i]) || next_min_reached[i-1];
 
-            next_taumin[i] = (update[i]) ? ((read_addr_cd << LOG_BRAM) + i) + ((cumdiff_cycles == 3 + NUM_DIV_CYCLES) << 1) : next_taumin[i-1];
+            next_taumin[i] = (update[i]) ? ((read_addr_cd << LOG_BRAM) + i) + ((cmp_cycle_select) << 1) : next_taumin[i-1];
             next_cd_min[i] = (update[i]) ? cd_div[i] : next_cd_min[i-1];
         end
     end
@@ -155,7 +157,9 @@ module yin #(
             write_addr_d <= '0;
             wen_d <= '0;
 
-            diff_accum <= '0;
+            cd_add <= '0;
+            cd_diff_pipe <= '0;
+
             taumin <= '0;
             cd_min <= {FP_WIDTH{1'b1}};
             min_reached <= '0;
@@ -188,18 +192,18 @@ module yin #(
 
             // CUMDIFF PREFIX SUM
             if (cumdiff_cycles == 2) begin
-                cd_add[0] <= diff_accum + cd_diff[0];
-                cd_add[1] <= diff_accum + cd_diff[0] + cd_diff[1];
-                cd_add[2] <= diff_accum + cd_diff[0] + cd_diff[1] + cd_diff[2];
-                cd_add[3] <= diff_accum + cd_diff[0] + cd_diff[1] + cd_diff[2] + cd_diff[3];
+                cd_add[0] <= cd_add[3] + cd_diff[0];
+                cd_add[1] <= cd_add[3] + cd_diff[0] + cd_diff[1];
+                cd_add[2] <= cd_add[3] + cd_diff[0] + cd_diff[1] + cd_diff[2];
+                cd_add[3] <= cd_add[3] + cd_diff[0] + cd_diff[1] + cd_diff[2] + cd_diff[3];
 
-                diff_accum <= diff_accum + cd_diff[0] + cd_diff[1] + cd_diff[2] + cd_diff[3];
-            end else if ((cumdiff_cycles == 2 + NUM_DIV_CYCLES) || (cumdiff_cycles == 3 + NUM_DIV_CYCLES)) begin
+                cd_diff_pipe <= cd_diff;
+            end else if ((cumdiff_cycles == 2 + NUM_DIV_CYCLES) || (cmp_cycle_select)) begin
                 taumin <= next_taumin[NUM_BRAM-1];
                 cd_min <= next_cd_min[NUM_BRAM-1];
                 min_reached <= next_min_reached[NUM_BRAM-1];
             end else if (valid_out) begin
-                diff_accum <= '0;
+                cd_add <= '0;
                 taumin <= '0;
                 cd_min <= {FP_WIDTH{1'b1}};
                 min_reached <= '0;
@@ -276,7 +280,7 @@ module yin #(
                 .clk_in(clk_in),
                 .rst_in(rst_in),
 
-                .dividend_in(cd_diff[i*2+k]),
+                .dividend_in(cd_diff_pipe[i*2+k]),
                 .divisor_in(cd_add[i*2+k]),
                 .valid_in(cumdiff_cycles == 3),
 
