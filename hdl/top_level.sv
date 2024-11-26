@@ -2,6 +2,7 @@
 module top_level (
     input wire       clk_100mhz,
     input wire [3:0] btn,
+    input wire [15:0] sw,
 
     // Speaker Signals
     output logic spkl,
@@ -26,12 +27,16 @@ module top_level (
     output logic [2:0] rgb1
 );
 
+    localparam int unsigned RAW_MIC_DATA_WIDTH = 24;
+    localparam int unsigned MIC_DATA_WIDTH = 16;
+
     logic sys_rst;
     assign sys_rst = btn[0];
 
-    logic [15:0] raw_mic_data;
-    logic [23:0] raw_mic_debug_data;
+    logic [RAW_MIC_DATA_WIDTH-1:0] raw_mic_debug_data;
+    logic [RAW_MIC_DATA_WIDTH-1:0] raw_mic_debug_data_pipe;
     logic raw_mic_data_valid;
+    logic [1:0] raw_mic_data_valid_pipe;
     i2s_receiver i2s_receiver (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
@@ -44,7 +49,6 @@ module top_level (
         .ws_out  (ws),
 
         // Data Outputs
-        .data_out(raw_mic_data),
         .debug_data_out(raw_mic_debug_data),
         .data_valid_out(raw_mic_data_valid)
     );
@@ -52,8 +56,20 @@ module top_level (
     logic [15:0] sample;
     always_ff @(posedge clk_100mhz) begin
         if (raw_mic_data_valid) begin
-            sample <= raw_mic_data;
+            raw_mic_debug_data_pipe <= raw_mic_debug_data;
         end
+        case (sw[7:0])
+            8'b00000010: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-2 -: 16];
+            8'b00000100: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-3 -: 16];
+            8'b00001000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-4 -: 16];
+            8'b00010000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-5 -: 16];
+            8'b00100000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-6 -: 16];
+            8'b01000000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-7 -: 16];
+            8'b10000000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-8 -: 16];
+            default: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-1 -: 16];
+        endcase
+
+        raw_mic_data_valid_pipe <= {raw_mic_data_valid_pipe, raw_mic_data_valid};
     end
 
     logic spk_out;
@@ -68,6 +84,9 @@ module top_level (
     );
     assign spkl = spk_out;
     assign spkr = spk_out;
+
+    logic [10:0] raw_taumin;
+    logic raw_taumin_valid;
 
 
     uart_transmit #(
@@ -85,10 +104,8 @@ module top_level (
 
     );
 
-    logic [10:0] raw_taumin;
-    logic raw_taumin_valid;
     yin #(
-        .WIDTH(16),
+        .WIDTH(MIC_DATA_WIDTH),
         .WINDOW_SIZE(2048),
         .DIFFS_PER_BRAM(512),
         .TAUMAX(2048)
@@ -96,12 +113,29 @@ module top_level (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        .sample_in(raw_mic_data),
-        .valid_in (raw_mic_data_valid),
+        .sample_in(sample),
+        .valid_in (raw_mic_data_valid_pipe[1]),
 
         .valid_out(raw_taumin_valid),
         .taumin(raw_taumin)
     );
+    //fp_div #(
+    //    .WIDTH(42),
+    //    .FRACTION_WIDTH(10),
+    //    .NUM_STAGES(8)
+    //) (
+    //    .clk_in(clk_100mhz),
+    //    .rst_in(sys_rst),
+
+    //    .dividend_in({16'b0, sample}),
+    //    .divisor_in({sample, sample}),
+    //    .valid_in(raw_mic_data_valid_pipe[1]),
+
+    //    .quotient_out(raw_taumin),
+    //    .valid_out(raw_taumin_valid),
+    //    .err_out(),
+    //    .busy()
+    //);
     logic [10:0] taumin;
     always_ff @(posedge clk_100mhz) begin
         if (raw_taumin_valid) begin
