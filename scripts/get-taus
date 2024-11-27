@@ -2,7 +2,7 @@
 
 
 if [ "$#" -ne 2 ]; then
-    echo "Usage: yin.sh <input wav> <output file>"
+    echo "Usage: get-taus <input wav> <output file>"
     exit 69
 fi
 

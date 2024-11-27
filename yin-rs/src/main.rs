@@ -2,8 +2,6 @@ use clap::Parser;
 use hound::WavReader;
 use num_traits::FromPrimitive;
 
-const FS: usize = 44100;
-
 #[derive(Parser)]
 struct Config {
     #[arg(long)]
@@ -14,13 +12,7 @@ struct Config {
     file: String,
 }
 
-macro_rules! f32 {
-    ($e:expr) => {
-        f32::from_usize($e).unwrap()
-    };
-}
-
-fn yin(sig: &[f32], window_size: usize, taumax: usize) -> f32 {
+fn yin(sig: &[f32], window_size: usize, taumax: usize) -> u16 {
     let mut diff = vec![0.0; taumax];
     let mut cumdiff = vec![0.0; taumax];
 
@@ -51,15 +43,7 @@ fn yin(sig: &[f32], window_size: usize, taumax: usize) -> f32 {
         }
     }
 
-    fit(f32!(FS) / f32!(tau_min))
-}
-
-fn fit(s: f32) -> f32 {
-    if s > 1000.0 {
-        0.0
-    } else {
-        s
-    }
+    tau_min as u16
 }
 
 fn main() {
