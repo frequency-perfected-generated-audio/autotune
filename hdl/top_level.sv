@@ -1,7 +1,7 @@
 `default_nettype wire
 module top_level (
-    input wire       clk_100mhz,
-    input wire [3:0] btn,
+    input wire        clk_100mhz,
+    input wire [ 3:0] btn,
     input wire [15:0] sw,
 
     // Speaker Signals
@@ -27,16 +27,11 @@ module top_level (
     output logic [2:0] rgb1
 );
 
-    localparam int unsigned RAW_MIC_DATA_WIDTH = 24;
-    localparam int unsigned MIC_DATA_WIDTH = 16;
-
     logic sys_rst;
     assign sys_rst = btn[0];
 
-    logic [RAW_MIC_DATA_WIDTH-1:0] raw_mic_debug_data;
-    logic [RAW_MIC_DATA_WIDTH-1:0] raw_mic_debug_data_pipe;
-    logic raw_mic_data_valid;
-    logic [1:0] raw_mic_data_valid_pipe;
+    logic [23:0] raw_mic_data;
+    logic        raw_mic_data_valid;
     i2s_receiver i2s_receiver (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
@@ -49,27 +44,26 @@ module top_level (
         .ws_out  (ws),
 
         // Data Outputs
-        .debug_data_out(raw_mic_debug_data),
+        .debug_data_out(raw_mic_data),
         .data_valid_out(raw_mic_data_valid)
     );
 
-    logic [15:0] sample;
+    logic [23:0] sample;
+    logic        sample_valid;
     always_ff @(posedge clk_100mhz) begin
         if (raw_mic_data_valid) begin
-            raw_mic_debug_data_pipe <= raw_mic_debug_data;
+            sample <= raw_mic_data;
         end
-        case (sw[7:0])
-            8'b00000010: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-2 -: 16];
-            8'b00000100: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-3 -: 16];
-            8'b00001000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-4 -: 16];
-            8'b00010000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-5 -: 16];
-            8'b00100000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-6 -: 16];
-            8'b01000000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-7 -: 16];
-            8'b10000000: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-8 -: 16];
-            default: sample <= raw_mic_debug_data_pipe[RAW_MIC_DATA_WIDTH-1 -: 16];
-        endcase
+        sample_valid <= raw_mic_data_valid;
+    end
 
-        raw_mic_data_valid_pipe <= {raw_mic_data_valid_pipe, raw_mic_data_valid};
+    logic [15:0] processed_sample;
+    logic        processed_sample_valid;
+    always_ff @(posedge clk_100mhz) begin
+        if (sample_valid) begin
+            processed_sample <= sample[23:8];
+        end
+        processed_sample_valid <= sample_valid;
     end
 
     logic spk_out;
@@ -78,7 +72,7 @@ module top_level (
         .NBITS(16)
     ) audio_generator (
         .clk_in(clk_100mhz),
-        .d_in  (sample),
+        .d_in  (processed_sample),
         .rst_in(sys_rst),
         .d_out (spk_out)
     );
@@ -105,7 +99,7 @@ module top_level (
     );
 
     yin #(
-        .WIDTH(MIC_DATA_WIDTH),
+        .WIDTH(16),
         .WINDOW_SIZE(2048),
         .DIFFS_PER_BRAM(512),
         .TAUMAX(2048)
@@ -113,29 +107,13 @@ module top_level (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        .sample_in(sample),
-        .valid_in (raw_mic_data_valid_pipe[1]),
+        .sample_in(processed_sample),
+        .valid_in (processed_sample_valid),
 
         .valid_out(raw_taumin_valid),
         .taumin(raw_taumin)
     );
-    //fp_div #(
-    //    .WIDTH(42),
-    //    .FRACTION_WIDTH(10),
-    //    .NUM_STAGES(8)
-    //) (
-    //    .clk_in(clk_100mhz),
-    //    .rst_in(sys_rst),
 
-    //    .dividend_in({16'b0, sample}),
-    //    .divisor_in({sample, sample}),
-    //    .valid_in(raw_mic_data_valid_pipe[1]),
-
-    //    .quotient_out(raw_taumin),
-    //    .valid_out(raw_taumin_valid),
-    //    .err_out(),
-    //    .busy()
-    //);
     logic [10:0] taumin;
     always_ff @(posedge clk_100mhz) begin
         if (raw_taumin_valid) begin
@@ -150,7 +128,7 @@ module top_level (
     ) seven_seg (
         .clk_in (clk_100mhz),
         .rst_in (sys_rst),
-        .val_in ({raw_taumin_valid, 20'b0, taumin}),
+        .val_in ({21'b0, taumin}),
         .cat_out(ss_c),
         .an_out ({ss0_an, ss1_an})
     );
