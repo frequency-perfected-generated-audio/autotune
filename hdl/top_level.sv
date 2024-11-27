@@ -60,7 +60,9 @@ module top_level (
     logic [15:0] processed_sample;
     logic        processed_sample_valid;
     always_ff @(posedge clk_100mhz) begin
-        processed_sample <= sample[23:8];
+        if (sample_valid) begin
+            processed_sample <= sample[23:8];
+        end
         processed_sample_valid <= sample_valid;
     end
 
