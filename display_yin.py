@@ -36,7 +36,7 @@ def live_update_demo(blit=False):
     (line,) = ax.plot([])
 
     ax.set_xlim(x.min(), x.max())
-    ax.set_ylim([0, 500])
+    ax.set_ylim([0, 1500])
 
     fig.canvas.draw()  # note that the first draw comes before setting data
 
@@ -50,7 +50,7 @@ def live_update_demo(blit=False):
         # TODO: update y
         tau = int.from_bytes(ser.read(), "little")
         f0 = np.roll(f0, -1)
-        f0[-1] = tau  # 44100 / (8 * tau)
+        f0[-1] =  44100 / (8 * tau + 0.01)
         line.set_data(x, f0)
         if blit:
             # restore background
