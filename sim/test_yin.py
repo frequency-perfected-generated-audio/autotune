@@ -12,7 +12,7 @@ import numpy as np
 import math
 
 WIDTH = 16
-WINDOW_SIZE = 512
+WINDOW_SIZE = 128
 TAUMAX = WINDOW_SIZE
 DIFFS_PER_BRAM = WINDOW_SIZE / 4
 
@@ -132,7 +132,7 @@ async def test_cumdiff(dut, iteration, window_idx):
     await ClockCycles(dut.clk_in, 7, rising=False)
     for x in range(4):
         if iteration*4+x != 0:
-            actual_div = index(dut.cd_div_out.value, x, FP_WIDTH)
+            actual_div = index(dut.cd_div_out.value, x, FRACTION_WIDTH+1)
             expected_div = div[iteration*4+x]
             assert expected_div == actual_div, f"expected {expected_div}, got {actual_div} for div index {x}"
 
@@ -147,7 +147,7 @@ async def test_cumdiff(dut, iteration, window_idx):
             expected_mr = min_reached[iteration*4+y*2+x]
             assert actual_mr == expected_mr, f"expected {expected_mr}, got {actual_mr} for min_reached index {y*2+x}"
 
-            actual_min = index(dut.next_cd_min.value, x, FP_WIDTH)
+            actual_min = index(dut.next_cd_min.value, x, FRACTION_WIDTH+1)
             expected_min = final_mins[iteration*4+y*2+x][0]
             if iteration*4+y*2+x != 0:
                 assert actual_min == expected_min, f"expected {hex(expected_min)}, got {hex(actual_min)} for min index {y*2+x}"

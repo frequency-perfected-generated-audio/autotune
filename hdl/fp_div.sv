@@ -11,7 +11,7 @@ module fp_div #(
     input wire [WIDTH-FRACTION_WIDTH-1:0] divisor_in,
     input wire valid_in,
 
-    output logic [WIDTH-1:0] quotient_out,
+    output logic [FRACTION_WIDTH:0] quotient_out,
     output logic valid_out,
     output logic err_out,
     output logic busy
@@ -44,13 +44,13 @@ module fp_div #(
   always_comb begin
     next_quotient[BITS_PER_STAGE-1] = divisor <= dividend;
 
-    dividend_subtract[0] = (divisor <= dividend) ? dividend - divisor : dividend;
+    dividend_subtract[0] = (next_quotient[BITS_PER_STAGE-1]) ? dividend - divisor : dividend;
     dividend_shift[0] = dividend_subtract[0] << 1;
 
     for (int i = 1; i < BITS_PER_STAGE; i++) begin
       next_quotient[BITS_PER_STAGE-1-i] = (divisor <= dividend_shift[i-1]);
 
-      dividend_subtract[i] = (divisor <= dividend_shift[i-1]) ? dividend_shift[i-1] - divisor : dividend_shift[i-1]; // ... and subtract
+      dividend_subtract[i] = (next_quotient[BITS_PER_STAGE-1-i]) ? dividend_shift[i-1] - divisor : dividend_shift[i-1]; // ... and subtract
       dividend_shift[i] = dividend_subtract[i] << 1; // shift
     end
   end
@@ -60,11 +60,11 @@ module fp_div #(
   generate
   if (STAGE_OVERFLOW == 0) begin
     always_ff @(posedge clk_in) begin
-      quotient_out <= {'0, quotient};
+      quotient_out <= quotient;
     end
   end else begin
     always_ff @(posedge clk_in) begin
-      quotient_out <= {quotient, next_quotient[(BITS_PER_STAGE - 1) -: (STAGE_OVERFLOW)]} & {(FRACTION_WIDTH+1){1'b1}};
+      quotient_out <= {quotient, next_quotient[(BITS_PER_STAGE - 1) -: (STAGE_OVERFLOW)]};
     end
   end
   endgenerate
@@ -82,7 +82,7 @@ module fp_div #(
       if (start) begin
         busy <= 1;
         cycle_count <= 1;
-        quotient <= {'0, next_quotient};
+        quotient <= '0;
 
         err_out <= divisor_in == 0;
 

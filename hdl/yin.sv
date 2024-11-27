@@ -26,10 +26,11 @@ module yin #(
     localparam int unsigned NUM_DIV_CYCLES = 8;
     localparam int unsigned NUM_CUMDIFF_CYCLES = NUM_DIV_CYCLES+4;
 
-    localparam int unsigned FP_WIDTH = 2*WIDTH+10;
+    localparam int unsigned FRACTION_WIDTH = 10;
+    localparam int unsigned FP_WIDTH = 2*WIDTH+FRACTION_WIDTH;
 
     localparam int unsigned CUTOFF_TAU = 1000 << 10;
-    localparam logic[9:0] EARLY_CD = 10'b0001100110;
+    localparam logic[9:0] EARLY_CD = 11'b00001100110;
 
     // COUNTERS/PIPELINE CONTROL
     logic processing_sample;
@@ -55,6 +56,7 @@ module yin #(
     logic [NUM_BRAM_PORTS-1:0][$clog2(TAU_PER_BRAM)-1:0] read_addr_d;
 
     // CUMDIFF BRAM CONTROL
+    logic [NUM_BRAM-1:0][$clog2(WINDOW_SIZE)-1:0] tau_cd;
     logic [$clog2(TAU_PER_BRAM)-1:0] read_addr_cd;
 
     // CUMDIFF OUTPUTS
@@ -67,16 +69,16 @@ module yin #(
     logic [NUM_BRAM-1:0] cd_div_err_ovfl;
     logic [NUM_BRAM-1:0] cd_div_err;
 
-    logic [NUM_BRAM_PORTS-1:0][FP_WIDTH-1:0] cd_div_out;
-    logic [NUM_BRAM-1:0][FP_WIDTH-1:0] cd_div_overflow;
-    logic [NUM_BRAM-1:0][FP_WIDTH-1:0] cd_div;
+    logic [NUM_BRAM_PORTS-1:0][FRACTION_WIDTH:0] cd_div_out;
+    logic [NUM_BRAM-1:0][FRACTION_WIDTH:0] cd_div_overflow;
+    logic [NUM_BRAM-1:0][FRACTION_WIDTH:0] cd_div;
 
     // CUMDIFF MIN FINDING CTRL
     logic cmp_cycle_select;
     assign cmp_cycle_select = (cumdiff_cycles == NUM_DIV_CYCLES + 3);
     logic [NUM_BRAM-1:0][$clog2(TAUMAX)-1:0] next_taumin;
-    logic [FP_WIDTH-1:0] cd_min;
-    logic [NUM_BRAM-1:0][FP_WIDTH-1:0] next_cd_min;
+    logic [FRACTION_WIDTH:0] cd_min;
+    logic [NUM_BRAM-1:0][FRACTION_WIDTH:0] next_cd_min;
     logic min_reached;
     logic [NUM_BRAM-1:0] next_min_reached;
     logic [NUM_BRAM-1:0] update;
@@ -121,21 +123,24 @@ module yin #(
                 end
             endcase
         end
-
-        cd_div = (cmp_cycle_select) ? cd_div_overflow : cd_div_out[0 +: NUM_BRAM];
-        cd_div_err = (cmp_cycle_select) ? cd_div_err_ovfl: cd_div_err_out[0 +: NUM_BRAM];
+        for (int i = 0; i < NUM_BRAM; i++) begin
+            tau_cd[i] = ((read_addr_cd << LOG_BRAM) + i) + ((cmp_cycle_select) << 1);
+        end
 
         for (int i = 0; i < NUM_BRAM_PORTS; i++) begin
             // STAGE 2 ADDR CALCULATION
             read_addr_d[i] = ((tau_r[i] >> LOG_BRAM_PORTS) << 1) + (tau_r[i] & 1'b1);
         end
 
+        cd_div = (cmp_cycle_select) ? cd_div_overflow : cd_div_out[0 +: NUM_BRAM];
+        cd_div_err = (cmp_cycle_select) ? cd_div_err_ovfl: cd_div_err_out[0 +: NUM_BRAM];
 
+        // MIN FINDING
         update[0] = ((cd_div[0] < cd_min) && !min_reached) && !cd_div_err[0];
         early_out[0] = cd_min < EARLY_CD;
         next_min_reached[0] = (early_out[0] && !update[0]) || min_reached;
 
-        next_taumin[0] = (update[0]) ? (read_addr_cd << LOG_BRAM) + ((cmp_cycle_select) << 1) : taumin;
+        next_taumin[0] = (update[0]) ? tau_cd[0] : taumin;
         next_cd_min[0] = (update[0]) ? cd_div[0] : cd_min;
 
         for (int i = 1; i < NUM_BRAM; i++) begin
@@ -143,7 +148,7 @@ module yin #(
             early_out[i] = next_cd_min[i-1] < EARLY_CD;
             next_min_reached[i] = (early_out[i] && !update[i]) || next_min_reached[i-1];
 
-            next_taumin[i] = (update[i]) ? ((read_addr_cd << LOG_BRAM) + i) + ((cmp_cycle_select) << 1) : next_taumin[i-1];
+            next_taumin[i] = (update[i]) ? tau_cd[i] : next_taumin[i-1];
             next_cd_min[i] = (update[i]) ? cd_div[i] : next_cd_min[i-1];
         end
     end
@@ -161,7 +166,7 @@ module yin #(
             cd_diff_pipe <= '0;
 
             taumin <= '0;
-            cd_min <= {FP_WIDTH{1'b1}};
+            cd_min <= {(FRACTION_WIDTH+1){1'b1}};
             min_reached <= '0;
             cd_div_overflow <= '0;
             cd_div_err_ovfl <= '0;
@@ -205,7 +210,7 @@ module yin #(
             end else if (valid_out) begin
                 cd_add <= '0;
                 taumin <= '0;
-                cd_min <= {FP_WIDTH{1'b1}};
+                cd_min <= {(FRACTION_WIDTH+1){1'b1}};
                 min_reached <= '0;
             end
         end
@@ -274,7 +279,7 @@ module yin #(
         for (k = 0; k < 2; k ++) begin
             fp_div #(
                 .WIDTH(FP_WIDTH),
-                .FRACTION_WIDTH(10),
+                .FRACTION_WIDTH(FRACTION_WIDTH),
                 .NUM_STAGES(NUM_DIV_CYCLES)
             ) u_fp_div (
                 .clk_in(clk_in),
