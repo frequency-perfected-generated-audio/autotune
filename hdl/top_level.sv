@@ -4,6 +4,9 @@ module top_level (
     input wire [ 3:0] btn,
     input wire [15:0] sw,
 
+    // LED Signals
+    output logic [15:0] led,
+
     // Speaker Signals
     output logic spkl,
     output logic spkr,
@@ -65,6 +68,9 @@ module top_level (
         end
         processed_sample_valid <= sample_valid;
     end
+
+    // Make LEDs show audio samples
+    assign led = processed_sample;
 
     logic spk_out;
 
@@ -135,12 +141,8 @@ module top_level (
     assign ss0_c = ss_c;
     assign ss1_c = ss_c;
 
-    always_ff @(posedge clk_100mhz) begin
-        if (raw_taumin_valid) begin
-            rgb0 <= 3'b010;
-            rgb1 <= 3'b010;
-        end
-    end
+    assign rgb0  = '0;
+    assign rgb1  = '0;
 
 endmodule
 
