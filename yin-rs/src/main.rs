@@ -55,7 +55,7 @@ fn main() {
     let mut reader = WavReader::open(file).unwrap();
     let sig = reader
         .samples::<i16>()
-        .map(|i| f32::from_i16(i.unwrap()).unwrap())
+        .map(|i| f32::from_u16((i.unwrap() as u16) ^0x8000u16).unwrap())
         .collect::<Vec<f32>>();
 
     for chunk in sig.chunks_exact(window_size) {
