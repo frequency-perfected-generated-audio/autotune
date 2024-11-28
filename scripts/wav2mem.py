@@ -23,4 +23,4 @@ samplerate, data = wavfile.read(input)
 data = data.view(dtype=np.uint16) ^ 0x8000 # convert to unsigned
 
 with open(output, "w") as f:
-    f.writelines(f"{sample}\n" for sample in data)
+    f.writelines(f"{sample:x}\n" for sample in data)
