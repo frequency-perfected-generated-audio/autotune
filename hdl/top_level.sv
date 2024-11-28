@@ -33,25 +33,36 @@ module top_level (
     logic sys_rst;
     assign sys_rst = btn[0];
 
-    logic [23:0] raw_mic_data;
+    logic [15:0] raw_mic_data;
     logic        raw_mic_data_valid;
-    i2s_receiver i2s_receiver (
+    // i2s_receiver i2s_receiver (
+    //     .clk_in(clk_100mhz),
+    //     .rst_in(sys_rst),
+    //
+    //     // I2S inputs
+    //     .sdata_in(sdata),
+    //
+    //     // I2S Outputs
+    //     .sclk_out(sclk),
+    //     .ws_out  (ws),
+    //
+    //     // Data Outputs
+    //     .debug_data_out(raw_mic_data),
+    //     .data_valid_out(raw_mic_data_valid)
+    // );
+    signal_replayer #(
+        .INIT_FILE("aladdin-felix.mem"),
+        .SAMPLES  (30000)
+    ) u_signal_replayer (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        // I2S inputs
-        .sdata_in(sdata),
-
-        // I2S Outputs
-        .sclk_out(sclk),
-        .ws_out  (ws),
-
-        // Data Outputs
-        .debug_data_out(raw_mic_data),
-        .data_valid_out(raw_mic_data_valid)
+        // Outputs
+        .signal(raw_mic_data),
+        .signal_valid_out(raw_mic_data_valid)
     );
 
-    logic [23:0] sample;
+    logic [15:0] sample;
     logic        sample_valid;
     always_ff @(posedge clk_100mhz) begin
         if (raw_mic_data_valid) begin
@@ -64,7 +75,7 @@ module top_level (
     logic        processed_sample_valid;
     always_ff @(posedge clk_100mhz) begin
         if (sample_valid) begin
-            processed_sample <= sample[23:8];
+            processed_sample <= sample;
         end
         processed_sample_valid <= sample_valid;
     end
@@ -85,64 +96,64 @@ module top_level (
     assign spkl = spk_out;
     assign spkr = spk_out;
 
-    logic [10:0] raw_taumin;
-    logic raw_taumin_valid;
+    // logic [10:0] raw_taumin;
+    // logic raw_taumin_valid;
+    //
+    //
+    // uart_transmit #(
+    //     .INPUT_CLOCK_FREQ(100_000_000),
+    //     .BAUD_RATE(460800)
+    // ) uart_tx (
+    //     .clk_in(clk_100mhz),
+    //     .rst_in(sys_rst),
+    //
+    //     .data_byte_in(raw_taumin[10:3]),
+    //     .trigger_in  (raw_taumin_valid),
+    //
+    //     .busy_out(),
+    //     .tx_wire_out(uart_txd)
+    //
+    // );
 
-
-    uart_transmit #(
-        .INPUT_CLOCK_FREQ(100_000_000),
-        .BAUD_RATE(460800)
-    ) uart_tx (
-        .clk_in(clk_100mhz),
-        .rst_in(sys_rst),
-
-        .data_byte_in(raw_taumin[10:3]),
-        .trigger_in  (raw_taumin_valid),
-
-        .busy_out(),
-        .tx_wire_out(uart_txd)
-
-    );
-
-    yin #(
-        .WIDTH(16),
-        .WINDOW_SIZE(2048),
-        .DIFFS_PER_BRAM(512),
-        .TAUMAX(2048)
-    ) yin (
-        .clk_in(clk_100mhz),
-        .rst_in(sys_rst),
-
-        .sample_in(processed_sample),
-        .valid_in (processed_sample_valid),
-
-        .valid_out(raw_taumin_valid),
-        .taumin(raw_taumin)
-    );
-
-    logic [10:0] taumin;
-    always_ff @(posedge clk_100mhz) begin
-        if (raw_taumin_valid) begin
-            taumin <= raw_taumin;
-        end
-    end
-
-    // Show taumin on seven segment display
-    logic [6:0] ss_c;
-    seven_segment_controller #(
-        .COUNT_PERIOD(100000)
-    ) seven_seg (
-        .clk_in (clk_100mhz),
-        .rst_in (sys_rst),
-        .val_in ({21'b0, taumin}),
-        .cat_out(ss_c),
-        .an_out ({ss0_an, ss1_an})
-    );
-    assign ss0_c = ss_c;
-    assign ss1_c = ss_c;
-
-    assign rgb0  = '0;
-    assign rgb1  = '0;
+    // yin #(
+    //     .WIDTH(16),
+    //     .WINDOW_SIZE(2048),
+    //     .DIFFS_PER_BRAM(512),
+    //     .TAUMAX(2048)
+    // ) yin (
+    //     .clk_in(clk_100mhz),
+    //     .rst_in(sys_rst),
+    //
+    //     .sample_in(processed_sample),
+    //     .valid_in (processed_sample_valid),
+    //
+    //     .valid_out(raw_taumin_valid),
+    //     .taumin(raw_taumin)
+    // );
+    //
+    // logic [10:0] taumin;
+    // always_ff @(posedge clk_100mhz) begin
+    //     if (raw_taumin_valid) begin
+    //         taumin <= raw_taumin;
+    //     end
+    // end
+    //
+    // // Show taumin on seven segment display
+    // logic [6:0] ss_c;
+    // seven_segment_controller #(
+    //     .COUNT_PERIOD(100000)
+    // ) seven_seg (
+    //     .clk_in (clk_100mhz),
+    //     .rst_in (sys_rst),
+    //     .val_in ({21'b0, taumin}),
+    //     .cat_out(ss_c),
+    //     .an_out ({ss0_an, ss1_an})
+    // );
+    // assign ss0_c = ss_c;
+    // assign ss1_c = ss_c;
+    //
+    // assign rgb0  = '0;
+    // assign rgb1  = '0;
 
 endmodule
 
