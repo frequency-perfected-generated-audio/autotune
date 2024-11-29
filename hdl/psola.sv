@@ -44,7 +44,10 @@ fp_div #(
     .busy()
 );
 
-searcher closest_semitone_finder (
+
+searcher #(
+    .WIDTH(12)
+) closest_semitone_finder (
     .clk_in(clk_in),
     .rst_in(new_signal),
     .period(period),
@@ -52,7 +55,7 @@ searcher closest_semitone_finder (
     .valid_out(search_valid_out),
     .err_out(),
     .busy()
-)
+);
 
 always_comb begin
     if (offset < period) begin
@@ -109,7 +112,7 @@ always_ff @(posedge clk_in) begin
             phase <= 1;
         end
     
-    end else if (i <= WINDOW_SIZE - period) begin
+    end else if (i <= WINDOW_SIZE - period && !done) begin
         
         if (offset < 2 * period) begin
 
@@ -129,10 +132,12 @@ always_ff @(posedge clk_in) begin
 
         end
 
-    end else begin
+    end else if (!done) begin
 
         done <= 1;
-        first_window <= ~first_window;
+        first_window <= !first_window;
+
+        phase <= 0;
 
     end
 
