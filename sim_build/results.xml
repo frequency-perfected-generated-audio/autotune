@@ -1,8 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1732903688" />
-    <testcase name="test_searcher" classname="test_searcher" file="/Users/aarushgupta/School/6205/proj/autotune/sim/test_searcher.py" lineno="47" time="0.017730236053466797" sim_time_ns="650.001" ratio_time="36660.594818922626">
-      <failure message="Test failed with RANDOM_SEED=1732903688" />
-    </testcase>
-  </testsuite>
-</testsuites>
