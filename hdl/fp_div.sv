@@ -16,12 +16,14 @@ module fp_div #(
     output logic err_out,
     output logic busy
 );
+  localparam int unsigned INT_WIDTH = WIDTH-FRACTION_WIDTH;
+
   // Save first/last stage to register inputs/outputs
   localparam int unsigned NUM_WORKING_STAGES = NUM_STAGES-2;
 
   // Need FRACTION_WIDTH + 1 cycles ordinarily, so perform all stage
   // calculations with that in mind
-  localparam int unsigned BITS_PER_STAGE = ((FRACTION_WIDTH) / NUM_WORKING_STAGES) + 1; // Jank ceiling
+  localparam int unsigned BITS_PER_STAGE = ((FRACTION_WIDTH-1) / NUM_WORKING_STAGES) + 1; // Jank ceiling
   localparam int unsigned STAGE_OVERFLOW = (FRACTION_WIDTH + 1) - (NUM_WORKING_STAGES-1) * BITS_PER_STAGE;
 
   // control signals
@@ -31,11 +33,11 @@ module fp_div #(
   assign start = valid_in && !busy;
 
   // Division logic
-  logic [WIDTH-FRACTION_WIDTH-1:0] divisor;
-  logic [WIDTH-FRACTION_WIDTH-1:0] dividend;
+  logic [INT_WIDTH-1:0] divisor;
+  logic [INT_WIDTH:0] dividend;
 
-  logic [BITS_PER_STAGE-1:0][WIDTH-1:0] dividend_shift;
-  logic [BITS_PER_STAGE-1:0][WIDTH-1:0] dividend_subtract;
+  logic [BITS_PER_STAGE-1:0][INT_WIDTH:0] dividend_shift;
+  logic [BITS_PER_STAGE-1:0][INT_WIDTH:0] dividend_subtract;
 
   logic [BITS_PER_STAGE-1:0] next_quotient;
   logic [FRACTION_WIDTH:0] quotient;

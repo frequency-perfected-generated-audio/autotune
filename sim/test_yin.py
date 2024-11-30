@@ -26,7 +26,7 @@ D_ADDR_WIDTH = int(math.log2(TAUMAX/2))
 TAU_WIDTH = int(math.log2(TAUMAX))
 
 DIFF_WIDTH = 42
-FRACTION_WIDTH = 10
+FRACTION_WIDTH = 15
 FP_WIDTH = DIFF_WIDTH+FRACTION_WIDTH
 
 NUM_WINDOWS = 4
@@ -43,7 +43,6 @@ def to_fp(value):
 
     return int(hex(accum), 16)
 
-
 with wave.open("/home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/sim/aladdin.wav") as f:
     samples = array('H', f.readframes(NUM_WINDOWS*WINDOW_SIZE)).tolist()
 
@@ -55,6 +54,15 @@ with open("/home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/sim/ala
     taus = [int(t) for t in f.readlines()]
 
 input_windows = [[samples[i*WINDOW_SIZE+j] for j in range(WINDOW_SIZE)] for i in range(NUM_WINDOWS)]
+#window = input_windows[1]
+#diff = [sum((window[s1] - window[s2])**2 for s1 in range(WINDOW_SIZE) for s2 in range(s1) if (s1-s2) == x) for x in range(TAUMAX)]
+#
+#prefix_sum = [sum(diff[:x+1]) for x in range(TAUMAX)]
+#div = [diff[x] / prefix_sum[x] if prefix_sum[x] != 0 else (1<<FP_WIDTH)-1 for x in range(TAUMAX)]
+#print(min(div))
+#print(to_fp(min(div)))
+#sys.exit(0)
+
 async def send_window(dut):
     while True:
         await ClockCycles(dut.clk_in, 5)
@@ -119,10 +127,10 @@ async def test_cumdiff(dut, iteration, window_idx):
 
     prefix_sum = [sum(diff[:x+1]) for x in range(TAUMAX)]
     div = [to_fp(diff[x] / prefix_sum[x]) if prefix_sum[x] != 0 else (1<<FP_WIDTH)-1 for x in range(TAUMAX)]
-    mul = [1024] + [i * div[i] for i in range(1, TAUMAX)]
+    mul = [1<<FRACTION_WIDTH] + [i * div[i] for i in range(1, TAUMAX)]
 
     mins = [(min(mul[:x+1]), np.argmin(mul[:x+1])) for x in range(TAUMAX)]
-    early_out = [False] + [min < 0b0001100110 for min, _ in mins[:-1]]
+    early_out = [False] + [min < 0b000110011001100 for min, _ in mins[:-1]]
 
     final_mins = []
     min_reached = [False]
@@ -145,7 +153,7 @@ async def test_cumdiff(dut, iteration, window_idx):
         assert index(dut.cd_add.value, x, DIFF_WIDTH) == prefix_sum[iteration*4+x], f"incorrect addition for index {x}"
 
     # RESULTS OF DIV
-    await ClockCycles(dut.clk_in, 7, rising=False)
+    await ClockCycles(dut.clk_in, 10, rising=False)
     for x in range(4):
         if iteration*4+x != 0:
             actual_div = index(dut.cd_div.value, x, FRACTION_WIDTH+1)
