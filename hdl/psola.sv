@@ -11,9 +11,9 @@ module psola #(parameter WINDOW_SIZE = 2048) (
 
 localparam int LOG_WINDOW_SIZE = $clog2(WINDOW_SIZE);
 
-logic [LOG_WINDOW_SIZE-1:0] i;
-logic [LOG_WINDOW_SIZE-1:0] j;
-logic [LOG_WINDOW_SIZE-1:0] offset;
+logic [LOG_WINDOW_SIZE:0] i;
+logic [LOG_WINDOW_SIZE:0] j;
+logic [LOG_WINDOW_SIZE:0] offset;
 
 logic [11:0] shifted_period;
 logic [11:0] shifted_period_temp;
@@ -31,12 +31,12 @@ logic [1:0] phase;
 
 
 fp_div #(
-    .WIDTH(12),
-    .FRACTION_WIDTH(12),
+    .WIDTH(20),
+    .FRACTION_WIDTH(10),
     .NUM_STAGES(8)
 ) period_div (
     .clk_in(clk_in),
-    .rst_in(new_signal),
+    .rst_in(rst_in),
     .dividend_in(1),
     .divisor_in(period),
     .valid_in(new_signal),
@@ -47,12 +47,10 @@ fp_div #(
 );
 
 
-searcher #(
-    .WIDTH(12)
-) closest_semitone_finder (
+searcher closest_semitone_finder (
     .clk_in(clk_in),
-    .rst_in(new_signal),
-    .searching(phase == 1),
+    .rst_in(rst_in),
+    .start_search(new_signal),
     .search_val(period),
     .closest_value(shifted_period_temp),
     .closest_value_found(search_valid_out)
@@ -62,7 +60,7 @@ always_comb begin
     if (offset < period) begin
         window_func_val = offset * inv_period; 
     end else begin
-        window_func_val = 2 - offset * inv_period;
+        window_func_val = (2 << 10) - offset * inv_period;
     end
 end
 
@@ -83,7 +81,9 @@ always_ff @(posedge clk_in) begin
 
         shifted_period_found <= 0;
         inv_period_found <= 0;
-    
+
+        output_window_len <= 0;
+
     end else if (new_signal) begin
 
         done <= 0;
@@ -100,6 +100,13 @@ always_ff @(posedge clk_in) begin
         shifted_period_found <= 0;
         inv_period_found <= 0;
 
+        output_window_len <= 0;
+
+        for (integer i = 0; i < 2 * WINDOW_SIZE; i = i + 1) begin
+            out[i] <= 0;
+        end
+
+
     end else if (phase == 1) begin
 
         if (div_valid_out) begin
@@ -110,24 +117,25 @@ always_ff @(posedge clk_in) begin
         if (search_valid_out) begin
             shifted_period_found <= 1;
             shifted_period <= shifted_period_temp;
+            // shifted_period <= period;
         end
 
         if (inv_period_found && shifted_period_found) begin
-            phase <= 1;
+            phase <= 2;
         end
     
     end else if (phase == 2 && i + period < WINDOW_SIZE) begin
         
-        if (offset < 2 * period && offset < WINDOW_SIZE - i) begin
+        if (offset < 2 * period && i + offset < WINDOW_SIZE) begin
 
             if (j + offset >= output_window_len) begin
                 output_window_len <= j + offset + 1;
             end
 
-            if (j + offset < period) begin
-                out[j + offset] <= $signed(signal[i + offset]); 
+            if (i + offset < period) begin
+                out[j + offset] <= $signed($signed(signal[i + offset]) << 10); 
             end else begin
-                out[j + offset] <= $signed(out[j + offset] + signal[i + offset] * window_func_val);
+                out[j + offset] <= $signed(out[j + offset]) + $signed(signal[i + offset]) * window_func_val;
             end
 
             offset <= offset + 1;

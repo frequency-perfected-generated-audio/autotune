@@ -4,6 +4,8 @@ import librosa
 import soundfile as sf
 from pathlib import Path
 
+from matplotlib import pyplot as plt
+
 import os
 import sys
 
@@ -22,6 +24,7 @@ async def reset(dut, cycles=2):
     dut.rst_in.value = 1
     await ClockCycles(dut.clk_in, cycles)
     dut.rst_in.value = 0
+    await ClockCycles(dut.clk_in, cycles)
 
 
 async def process_window(dut, window, period):
@@ -34,13 +37,16 @@ async def process_window(dut, window, period):
     await FallingEdge(dut.clk_in)
     dut.new_signal.value = 0
 
-    # Wait for the done signal
-    while not dut.done.value:
-        await RisingEdge(dut.clk_in)
+    # await ClockCycles(dut.clk_in, 15000)
+    await RisingEdge(dut.done)
 
     # Collect output
     output_window_len = dut.output_window_len.value.integer
-    output = [int(dut.out[i].value) / (2**20) for i in range(output_window_len)]
+    dut._log.info(f"PSOLA produced window of length {output_window_len}")
+
+    output = [
+        dut.out[i].value.signed_integer / (2**20) for i in range(output_window_len)
+    ]
     return output
 
 
@@ -53,7 +59,6 @@ async def test_psola(dut):
     await reset(dut)
 
     BASE_PATH = Path(__file__).resolve().parent.parent
-    print("BASE PATH", BASE_PATH)
 
     AUDIO_PATH = BASE_PATH / "test_data" / "aladdin-new.wav"
     PERIODS_PATH = BASE_PATH / "test_data" / "aladdin-new-windows.txt"
@@ -62,28 +67,49 @@ async def test_psola(dut):
     input_wave, _ = librosa.load(AUDIO_PATH, sr=SAMPLE_RATE)
     with open(PERIODS_PATH, "r") as file:
         periods = [int(SAMPLE_RATE / float(line.strip())) for line in file]
+
     input_wave = input_wave[: len(periods) * WINDOW_SIZE]
 
     # Split audio into windows
     windows = np.array_split(input_wave, len(periods))
 
     # Process each window
-    processed_audio = []
+    processed_signal = []
     for window, period in zip(windows, periods):
         # Zero-pad if the window is smaller than WINDOW_SIZE
 
-        print(window)
-        fp_window = [int(x * (2**20)) for x in window]
-
-        print([hex(val) for val in fp_window])
-        print(period)
+        fp_window = [int(x * (2**10)) for x in window]
 
         output_window = await process_window(dut, fp_window, period)
-        processed_audio.extend(output_window)
+        processed_signal.extend(output_window)
+
+    processed_signal = np.clip(processed_signal, -0.38, 0.3)
 
     # Save the processed audio
-    processed_audio = np.array(processed_audio, dtype=np.int16)
-    sf.write("cocotb_psola_output.wav", processed_audio, SAMPLE_RATE)
+    # processed_signal = np.array(processed_signal, dtype=np.int16)
+    sf.write("cocotb_psola_output.wav", processed_signal, SAMPLE_RATE)
+
+    # Plot the original signal
+    plt.figure(figsize=(14, 7))
+    plt.subplot(2, 1, 1)
+    plt.plot(input_wave, label="Original Signal")
+    plt.title("Original Signal")
+    plt.xlabel("Sample")
+    plt.ylabel("Amplitude")
+    plt.legend()
+
+    # Plot the processed signal
+    plt.subplot(2, 1, 2)
+    plt.plot(processed_signal, label="Processed Signal", color="orange")
+    plt.title("Processed Signal")
+    plt.xlabel("Sample")
+    plt.ylabel("Amplitude")
+    plt.legend()
+
+    plt.tight_layout()
+
+    plt.savefig("waveform_plots.png")
+    plt.show()
 
     dut._log.info("Processed audio saved to cocotb_psola_output.wav")
 

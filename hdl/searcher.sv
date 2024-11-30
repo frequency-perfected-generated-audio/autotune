@@ -10,15 +10,16 @@ module searcher #(
 ) (
     input logic clk_in,
     input logic rst_in,
-    input logic searching,
+    input logic start_search,
     input logic [WIDTH - 1:0] search_val,
     output logic [WIDTH - 1:0] closest_value,
     output logic closest_value_found
 );
 
     logic cycle_parity;
+    logic searching;
     
-    logic [$clog2(BRAM_SIZE) - 1: 0] curr_read_addr;
+    logic [$clog2(BRAM_SIZE): 0] curr_read_addr;
     logic [WIDTH-1:0] prev_diff;
     logic [WIDTH-1:0] val_from_bram;
 
@@ -47,23 +48,38 @@ module searcher #(
             curr_read_addr <= 0;
             prev_diff <= {WIDTH{1'b1}};
 
+            searching <= 0;
+
             closest_value <= 0;
             closest_value_found <= 0;
 
-        end else if (!cycle_parity) begin
+        end else if (start_search) begin
+
+            searching <= 1;
+            cycle_parity <= 0;
+            curr_read_addr <= 0;
+            prev_diff <= {WIDTH{1'b1}};
+
+            closest_value <= 0;
+            closest_value_found <= 0;
+
+        end
+        
+        else if (!cycle_parity) begin
 
             if (closest_value_found) begin
+
                 // RESET SEARCH
                 curr_read_addr <= 0;
                 prev_diff <= {WIDTH{1'b1}};
 
                 closest_value <= 0;
                 closest_value_found <= 0;
-            end
+                searching <= 0;
 
-            if (searching) begin
+            end else if (searching) begin
 
-                if (val_from_bram > search_val) begin
+                if (val_from_bram >= search_val) begin
 
                     if (prev_diff > val_from_bram - search_val) begin
                         closest_value <= val_from_bram;
@@ -73,7 +89,14 @@ module searcher #(
 
                     closest_value_found <= 1;
 
-                end else begin
+                end else if (curr_read_addr == BRAM_SIZE) begin
+
+                    closest_value <= val_from_bram;
+                    closest_value_found <= 1;
+
+                end
+                
+                else begin
 
                     prev_diff <= search_val - val_from_bram;
                     curr_read_addr <= curr_read_addr + 1;
