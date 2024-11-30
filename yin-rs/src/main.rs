@@ -12,20 +12,22 @@ struct Config {
     file: String,
 }
 
-fn yin(sig: &[f32], window_size: usize, taumax: usize) -> u16 {
-    let mut diff = vec![0.0; taumax];
+fn yin(sig: &[u16], window_size: usize, taumax: usize) -> u16 {
+    let mut diff = vec![0; taumax];
     let mut cumdiff = vec![0.0; taumax];
 
-    diff[0] = f32::from_i16(1).unwrap();
+    diff[0] = 1; // this value doesn't actually matter
     cumdiff[0] = f32::from_i16(1).unwrap();
 
     // autocorrelate
     for tau in 1..taumax {
         for i in 0..(window_size - tau) {
-            diff[tau] += (sig[i] - sig[i + tau]).powi(2);
+            let samp = sig[i] as usize;
+            let offseted = sig[i + tau] as usize;
+            diff[tau] += (samp - offseted) * (samp - offseted);
         }
-        cumdiff[tau] =
-            f32::from_usize(tau).unwrap() * diff[tau] / diff.iter().skip(1).take(tau).sum::<f32>();
+        cumdiff[tau] = f32::from_usize(tau * diff[tau]).unwrap()
+            / (diff.iter().skip(1).take(tau).sum::<usize>() as f32);
     }
 
     let mut diff_min = f32::MAX;
@@ -55,8 +57,8 @@ fn main() {
     let mut reader = WavReader::open(file).unwrap();
     let sig = reader
         .samples::<i16>()
-        .map(|i| f32::from_u16((i.unwrap() as u16) ^0x8000u16).unwrap())
-        .collect::<Vec<f32>>();
+        .map(|i| (i.unwrap() as u16) ^ 0x8000u16)
+        .collect::<Vec<u16>>();
 
     for chunk in sig.chunks_exact(window_size) {
         println!("{}", yin(chunk, window_size, taumax))
