@@ -24,15 +24,14 @@ module yin #(
     localparam int unsigned TAU_WIDTH = $clog2(TAUMAX);
     localparam int unsigned TAU_PER_BRAM = TAUMAX / NUM_BRAM;
 
-    localparam int unsigned NUM_DIV_CYCLES = 8;
+    localparam int unsigned NUM_DIV_CYCLES = 11;
     localparam int unsigned NUM_CUMDIFF_CYCLES = NUM_DIV_CYCLES+5;
 
     localparam int unsigned DIFF_WIDTH = 42;
-    localparam int unsigned FRACTION_WIDTH = 10;
+    localparam int unsigned FRACTION_WIDTH = 15;
     localparam int unsigned FP_WIDTH = DIFF_WIDTH+FRACTION_WIDTH;
 
-    localparam int unsigned CUTOFF_TAU = 1000 << 10;
-    localparam logic[FRACTION_WIDTH+TAU_WIDTH:0] EARLY_CD = {'0, 1'b0, 10'b0001100110};
+    localparam logic[FRACTION_WIDTH+TAU_WIDTH:0] EARLY_CD = {'0, 1'b0, 15'b000110011001100};
 
     // COUNTERS/PIPELINE CONTROL
     logic processing_sample;
@@ -200,7 +199,7 @@ module yin #(
                 cd_diff_pipe <= cd_diff;
             end else if (cumdiff_cycles == 2 + NUM_DIV_CYCLES) begin
                 for (int i = 0; i < NUM_BRAM_PORTS; i++) begin
-                    cd_mul_reg[i] <= (cd_div_err[i]) ? {1'b1, 10'b0} : (cd_div[i] * tau_cd[i]);
+                    cd_mul_reg[i] <= (cd_div_err[i]) ? (1 << FRACTION_WIDTH) : (cd_div[i] * tau_cd[i]);
                 end
             end else if ((cumdiff_cycles == 3 + NUM_DIV_CYCLES) || (cumdiff_cycles == 4 + NUM_DIV_CYCLES)) begin
                 taumin <= next_taumin[NUM_BRAM-1];
