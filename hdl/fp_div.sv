@@ -32,7 +32,7 @@ module fp_div #(
 
   // Division logic
   logic [WIDTH-FRACTION_WIDTH-1:0] divisor;
-  logic [WIDTH-1:0] dividend;
+  logic [WIDTH-FRACTION_WIDTH-1:0] dividend;
 
   logic [BITS_PER_STAGE-1:0][WIDTH-1:0] dividend_shift;
   logic [BITS_PER_STAGE-1:0][WIDTH-1:0] dividend_subtract;
