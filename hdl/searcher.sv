@@ -1,11 +1,15 @@
+`ifdef SYNTHESIS
+`define FPATH(X) `"X`"
+`else /* ! SYNTHESIS */
+`define FPATH(X) `"../../data/X`"
+`endif  /* ! SYNTHESIS */
+
 module searcher #(
     parameter WIDTH = 12,
-    parameter BRAM_SIZE = 256
+    parameter BRAM_SIZE = 64
 ) (
     input logic clk_in,
     input logic rst_in,
-    input logic valid_store_val,
-    input logic [WIDTH - 1:0] to_store_val,
     input logic searching,
     input logic [WIDTH - 1:0] search_val,
     output logic [WIDTH - 1:0] closest_value,
@@ -14,35 +18,25 @@ module searcher #(
 
     logic cycle_parity;
     
-    logic [$clog2(BRAM_SIZE) - 1: 0] curr_store_addr;
-
     logic [$clog2(BRAM_SIZE) - 1: 0] curr_read_addr;
     logic [WIDTH-1:0] prev_diff;
     logic [WIDTH-1:0] val_from_bram;
 
-    xilinx_true_dual_port_read_first_1_clock_ram #(
-        .RAM_WIDTH(WIDTH),
-        .RAM_DEPTH(BRAM_SIZE),
-        .RAM_PERFORMANCE("HIGH_PERFORMANCE")
-    ) diff_bram (
-        .clka (clk_in),
-
-        .addra(curr_store_addr),
-        .wea  (valid_store_val && !cycle_parity),
-        .dina (to_store_val),
-        .douta(),
+    xilinx_single_port_ram_read_first #(
+    .RAM_WIDTH(WIDTH),                       
+    .RAM_DEPTH(BRAM_SIZE),                     
+    .RAM_PERFORMANCE("HIGH_PERFORMANCE"),
+    // .INIT_FILE(`FPATH(semitones.mem))
+    .INIT_FILE("/Users/aarushgupta/School/6205/proj/autotune/data/semitones.mem")
+    ) freqs_ram (
+        .addra(curr_read_addr),
+        .dina(0),
+        .clka(clk_in),
+        .wea(0),      
+        .ena(1),      
         .rsta(rst_in),
-
-        .addrb(curr_read_addr),
-        .web(0),
-        .dinb(),
-        .doutb(val_from_bram),
-        .rstb(rst_in),
-
-        .ena(1'b1),
-        .enb(1'b1),
-        .regcea(1'b1),
-        .regceb(1'b1)
+        .regcea(1), 
+        .douta(val_from_bram)
     );
 
     always_ff @(posedge clk_in) begin
@@ -50,7 +44,6 @@ module searcher #(
 
             cycle_parity <= 0;
 
-            curr_store_addr <= 0;
             curr_read_addr <= 0;
             prev_diff <= {WIDTH{1'b1}};
 
@@ -61,7 +54,6 @@ module searcher #(
 
             if (closest_value_found) begin
                 // RESET SEARCH
-                curr_store_addr <= 0;
                 curr_read_addr <= 0;
                 prev_diff <= {WIDTH{1'b1}};
 
@@ -69,11 +61,7 @@ module searcher #(
                 closest_value_found <= 0;
             end
 
-            if (valid_store_val) begin
-
-                curr_store_addr <= curr_store_addr + 1;
-
-            end else if (searching) begin
+            if (searching) begin
 
                 if (val_from_bram > search_val) begin
 

@@ -2,4 +2,4 @@ _history/
 out/
 obj/
 **/__pycache__
-**/sim_build
+sim_build

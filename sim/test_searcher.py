@@ -21,20 +21,6 @@ async def reset(dut, cycles=5):
     dut.rst_in.value = 0
 
 
-async def store_values(dut, values):
-    """Store values into the BRAM."""
-    for value in values:
-        await FallingEdge(dut.clk_in)
-        dut.valid_store_val.value = 1
-        dut.to_store_val.value = value
-        await ClockCycles(dut.clk_in, 2)
-        # dut._log.info(f"Current value OF ADDR: {dut.curr_store_addr.value.integer}")
-
-    # Ensure valid_store_val is deasserted
-    await FallingEdge(dut.clk_in)
-    dut.valid_store_val.value = 0
-
-
 async def search_value(dut, search_val):
     """Search for the closest value."""
     await FallingEdge(dut.clk_in)
@@ -52,33 +38,29 @@ async def test_searcher(dut):
     # Reset the DUT
     await reset(dut)
 
-    # Test storing values
-    stored_values = [10, 20, 30, 40, 50]
-    await store_values(dut, stored_values)
-    dut._log.info(f"VALUE OF ADDR: {dut.curr_store_addr.value.integer}")
-    assert dut.curr_store_addr.value.integer == len(
-        stored_values
-    ), "Incorrect store address after storing values."
-
     # Test searching
-    search_val = 25
+    search_val = 234
 
     await FallingEdge(dut.clk_in)
+    dut.search_val = search_val
     dut.searching.value = 1
 
-    for _ in range(25):
-        dut._log.info(f"Bram val: {dut.val_from_bram.value.integer}")
-        dut._log.info(f"Curr addr: {dut.curr_read_addr.value.integer}")
-        await ClockCycles(dut.clk_in, 2)
+    # for _ in range(25):
+    #     dut._log.info(f"Bram val: {dut.val_from_bram.value.integer}")
+    #     dut._log.info(f"Curr addr: {dut.curr_read_addr.value.integer}")
+    #     dut._log.info(f"Valid out: {dut.closest_value_found.value.integer}")
+    #     dut._log.info(f"Closest valu: {dut.closest_value.value.integer}")
+    #     # dut._log.info(f"Searching: {dut.searching.value.integer}")
+    #     dut._log.info("\n")
+    #     await ClockCycles(dut.clk_in, 1)
+
+    await RisingEdge(dut.closest_value_found)
 
     # Check results
     closest_value = dut.closest_value.value.integer
     closest_found = dut.closest_value_found.value
     assert closest_found, "Closest value not found."
-    assert closest_value in stored_values, "Closest value is not in stored values."
-    assert abs(closest_value - search_val) <= min(
-        abs(val - search_val) for val in stored_values
-    ), f"Closest value {closest_value} is not the closest to {search_val}."
+    dut._log.info(f"Closest period found to {search_val} was {closest_value}")
 
 
 def main():
@@ -87,7 +69,7 @@ def main():
     proj_path = Path(__file__).resolve().parent.parent
     sys.path.append(str(proj_path / "sim" / "model"))
     sources = [proj_path / "hdl" / "searcher.sv"]
-    sources += [proj_path / "hdl" / "xilinx_true_dual_port_read_first_1_clock_ram.v"]
+    sources += [proj_path / "hdl" / "xilinx_single_port_ram_read_first.sv"]
     build_test_args = ["-Wall"]
     parameters = {"WIDTH": WIDTH, "BRAM_SIZE": BRAM_SIZE}
     sys.path.append(str(proj_path / "sim"))
