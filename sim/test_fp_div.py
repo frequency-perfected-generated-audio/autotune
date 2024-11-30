@@ -15,14 +15,14 @@ async def reset(dut, cycles):
     await ClockCycles(dut.clk_in, cycles)
     dut.rst_in.value = 0
 
-WIDTH = 42
-FRACTION_WIDTH = 10
-NUM_STAGES = 8
+FRACTION_WIDTH = 15
+WIDTH = 42+FRACTION_WIDTH
+NUM_STAGES = 11
 
 BITS_PER_STAGE = ((FRACTION_WIDTH-1) // NUM_STAGES) + 1
 STAGE_OVERFLOW = FRACTION_WIDTH - (NUM_STAGES-1) * BITS_PER_STAGE;
 
-NUM_TESTS=10
+NUM_TESTS=40
 
 tests = []
 for x in range(NUM_TESTS):
@@ -32,8 +32,6 @@ for x in range(NUM_TESTS):
     
     tests.append((dividend, divisor, quotient))
     x += 1
-
-#tests = [(2, 6, 1/3)]
 
 def from_fp(value):
     accum = 0
@@ -76,6 +74,7 @@ async def test_fp_div(dut):
 
         expected = to_fp(quotient)
         got = hex(dut.quotient_out.value)
+        print(dut.quotient_out.value)
 
         assert got == expected, f"expected {expected}, got {got}"
 
