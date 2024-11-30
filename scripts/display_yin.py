@@ -48,9 +48,11 @@ def live_update_demo(blit=False):
 
     while True:
         # TODO: update y
-        tau = int.from_bytes(ser.read(), "little")
+        tau = 8 * int.from_bytes(ser.read(), "little")
         f0 = np.roll(f0, -1)
-        f0[-1] =  44100 / (8 * tau + 0.01)
+        tone = 44100 / (tau + 0.01)
+        f0[-1] = tone
+        print(f"{tau=} {tone=}")
         line.set_data(x, f0)
         if blit:
             # restore background
