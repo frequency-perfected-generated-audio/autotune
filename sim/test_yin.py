@@ -10,9 +10,11 @@ from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 import random
 import numpy as np
 import math
+import wave
+from array import array
 
 WIDTH = 16
-WINDOW_SIZE = 128
+WINDOW_SIZE = 256
 TAUMAX = WINDOW_SIZE
 DIFFS_PER_BRAM = WINDOW_SIZE / 4
 
@@ -23,25 +25,11 @@ D_ADDR_WIDTH = int(math.log2(TAUMAX/2))
 
 TAU_WIDTH = int(math.log2(TAUMAX))
 
+DIFF_WIDTH = 42
 FRACTION_WIDTH = 10
-FP_WIDTH = WIDTH*2+FRACTION_WIDTH
+FP_WIDTH = DIFF_WIDTH+FRACTION_WIDTH
 
 NUM_WINDOWS = 4
-
-random_window = [[random.randrange(0, 2**8-1) for _ in range(WINDOW_SIZE)] for _ in range(NUM_WINDOWS)]
-async def send_window(dut):
-    while True:
-        await ClockCycles(dut.clk_in, 5)
-        for rw in random_window:
-            for sample in rw:
-                dut.sample_in.value = sample
-                dut.valid_in.value = 1
-
-                await RisingEdge(dut.clk_in)
-                dut.sample_in.value = 0xDEAD
-                dut.valid_in.value = 0
-
-                await ClockCycles(dut.clk_in, CYCLES - 1)
 
 def index(value, index, width):
     return (value >> (index*width)) & ((1<<width)-1);
@@ -55,6 +43,32 @@ def to_fp(value):
 
     return int(hex(accum), 16)
 
+
+with wave.open("/home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/sim/aladdin.wav") as f:
+    samples = array('H', f.readframes(NUM_WINDOWS*WINDOW_SIZE)).tolist()
+
+with open("/home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/sim/aladdin-unsigned.txt") as f:
+    samples = f.readlines()[:NUM_WINDOWS*WINDOW_SIZE]
+    samples = [int(s[:-1], 16) for s in samples]
+
+with open("/home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/sim/aladdin-windows.txt") as f:
+    taus = [int(t) for t in f.readlines()]
+
+input_windows = [[samples[i*WINDOW_SIZE+j] for j in range(WINDOW_SIZE)] for i in range(NUM_WINDOWS)]
+async def send_window(dut):
+    while True:
+        await ClockCycles(dut.clk_in, 5)
+        for win in input_windows:
+            for sample in win:
+                dut.sample_in.value = sample
+                dut.valid_in.value = 1
+
+                await RisingEdge(dut.clk_in)
+                dut.sample_in.value = 0xDEAD
+                dut.valid_in.value = 0
+
+                await ClockCycles(dut.clk_in, CYCLES - 1)
+
 async def test_sample_pipeline(dut, sample_read, sample_in):
     bram_port_idx_s = (sample_read % WINDOW_SIZE) % 4
 
@@ -66,28 +80,30 @@ async def test_sample_pipeline(dut, sample_read, sample_in):
     # SHOULD SEE RESULTS OF STAGE 1 HERE
     if valid:
         sample_out = index(dut.sample_out.value, bram_port_idx_s, WIDTH)
-        expected_sample_out = random_window[sample_read // WINDOW_SIZE][sample_read % WINDOW_SIZE]
+        expected_sample_out = input_windows[sample_read // WINDOW_SIZE][sample_read % WINDOW_SIZE]
         assert expected_sample_out == sample_out, f"expected {hex(expected_sample_out)}, got {hex(sample_out)} for port {bram_port_idx_s}"
         diff_addr = index(dut.read_addr_d.value, bram_port_idx_d, D_ADDR_WIDTH)
         assert diff_addr == read_addr_d, f"expected {hex(read_addr_d)}, got {hex(diff_addr)} for port {bram_port_idx_d}"
 
     # RESULTS OF SUBTRACT
-    sub = abs(random_window[sample_read // WINDOW_SIZE][sample_read % WINDOW_SIZE] - random_window[sample_in // WINDOW_SIZE][sample_in % WINDOW_SIZE])
+    sub = abs(input_windows[sample_read // WINDOW_SIZE][sample_read % WINDOW_SIZE] - input_windows[sample_in // WINDOW_SIZE][sample_in % WINDOW_SIZE])
     await ClockCycles(dut.clk_in, 1, rising=False)
     if valid:
         assert index(dut.subtracted.value, bram_port_idx_s, WIDTH) == sub, "expected subtraction result"
 
     # RESULTS OF MUL
     await ClockCycles(dut.clk_in, 1, rising=False)
-    diff_so_far = sum((random_window[sample_in // WINDOW_SIZE][s1] - random_window[sample_in // WINDOW_SIZE][s2])**2 for s1 in range(sample_in % WINDOW_SIZE) for s2 in range(s1) if (s1 - s2) == (sample_in - sample_read))
+    diff_so_far = sum((input_windows[sample_in // WINDOW_SIZE][s1] - input_windows[sample_in // WINDOW_SIZE][s2])**2 for s1 in range(sample_in % WINDOW_SIZE) for s2 in range(s1) if (s1 - s2) == (sample_in - sample_read))
     if valid:
-        assert index(dut.multiplied.value, bram_port_idx_s, 2*WIDTH) == sub**2, "expected multiplication result"
-        assert index(dut.diff.value, bram_port_idx_d, 2*WIDTH) == diff_so_far, "grabbed wrong diff bram"
+        assert index(dut.multiplied.value, bram_port_idx_s, DIFF_WIDTH) == sub**2, "expected multiplication result"
+        assert index(dut.diff.value, bram_port_idx_d, DIFF_WIDTH) == diff_so_far, "grabbed wrong diff bram"
 
     # RESULTS OF ADD
     await ClockCycles(dut.clk_in, 1, rising=False)
     if valid:
-        assert index(dut.added.value, bram_port_idx_d, 2*WIDTH) == diff_so_far + sub**2, "expected addition result"
+        expected_addition = diff_so_far + sub**2
+        actual_addition = index(dut.added.value, bram_port_idx_d, DIFF_WIDTH)
+        assert expected_addition == actual_addition, f"expected {hex(expected_addition)} got {hex(actual_addition)} for addition"
         assert index(dut.write_addr_d.value, bram_port_idx_d, D_ADDR_WIDTH) == read_addr_d, "wrong diff BRAM write address"
     assert index(dut.wen_d.value, bram_port_idx_d, 1) == valid, "wrong diff BRAM write enable"
 
@@ -98,21 +114,21 @@ async def test_cumdiff(dut, iteration, window_idx):
     if window_idx == 0:
         return
 
-    window = random_window[window_idx-1]
-    diff = [sum((window[s1] - window[s2])**2 for s1 in range(WINDOW_SIZE) for s2 in range(s1) if (s1-s2) == x) for x in range(WINDOW_SIZE)]
-    prefix_sum = [sum(diff[:x+1]) for x in range(WINDOW_SIZE)]
+    window = input_windows[window_idx-1]
+    diff = [sum((window[s1] - window[s2])**2 for s1 in range(WINDOW_SIZE) for s2 in range(s1) if (s1-s2) == x) for x in range(TAUMAX)]
 
-    div = [diff[x] / prefix_sum[x] if prefix_sum[x] != 0 else (1<<FP_WIDTH)-1 for x in range(WINDOW_SIZE)]
-    div = list(map(to_fp, div))
+    prefix_sum = [sum(diff[:x+1]) for x in range(TAUMAX)]
+    div = [to_fp(diff[x] / prefix_sum[x]) if prefix_sum[x] != 0 else (1<<FP_WIDTH)-1 for x in range(TAUMAX)]
+    mul = [1024] + [i * div[i] for i in range(1, TAUMAX)]
 
-    mins = [(min(div[:x+1]), np.argmin(div[:x+1])) for x in range(WINDOW_SIZE)]
+    mins = [(min(mul[:x+1]), np.argmin(mul[:x+1])) for x in range(TAUMAX)]
     early_out = [False] + [min < 0b0001100110 for min, _ in mins[:-1]]
 
     final_mins = []
     min_reached = [False]
     for i in range(WINDOW_SIZE):
         if i > 0:
-            min_reached.append((early_out[i] and div[i] >= mins[i-1][0]) or min_reached[-1])
+            min_reached.append((early_out[i] and mul[i] >= mins[i-1][0]) or min_reached[-1])
         if not min_reached[-1]:
             final_mins.append(mins[i])
         else:
@@ -121,20 +137,28 @@ async def test_cumdiff(dut, iteration, window_idx):
     # RESULTS OF READ
     await ClockCycles(dut.clk_in, 3, rising=False)
     for x in range(4):
-        assert index(dut.cd_diff.value, x, 2*WIDTH) == diff[iteration*4+x], f"incorrect diff data out for index {x}"
+        assert index(dut.cd_diff.value, x, DIFF_WIDTH) == diff[iteration*4+x], f"incorrect diff data out for index {x}"
 
     # RESULTS OF ADD
     await ClockCycles(dut.clk_in, 1, rising=False)
     for x in range(4):
-        assert index(dut.cd_add.value, x, 2*WIDTH) == prefix_sum[iteration*4+x], f"incorrect addition for index {x}"
+        assert index(dut.cd_add.value, x, DIFF_WIDTH) == prefix_sum[iteration*4+x], f"incorrect addition for index {x}"
 
     # RESULTS OF DIV
     await ClockCycles(dut.clk_in, 7, rising=False)
     for x in range(4):
         if iteration*4+x != 0:
-            actual_div = index(dut.cd_div_out.value, x, FRACTION_WIDTH+1)
+            actual_div = index(dut.cd_div.value, x, FRACTION_WIDTH+1)
             expected_div = div[iteration*4+x]
             assert expected_div == actual_div, f"expected {expected_div}, got {actual_div} for div index {x}"
+
+    # RESULTS OF MUL
+    await ClockCycles(dut.clk_in, 1, rising=False)
+    for x in range(4):
+        if iteration*4+x != 0:
+            actual_mul = index(dut.cd_mul_reg.value, x, FRACTION_WIDTH+1+TAU_WIDTH)
+            expected_mul = mul[iteration*4+x]
+            assert expected_mul == actual_mul, f"expected {expected_mul}, got {actual_mul} for mul index {x}"
 
     # RESULTS OF CMP
     for y in range(2):
@@ -147,7 +171,7 @@ async def test_cumdiff(dut, iteration, window_idx):
             expected_mr = min_reached[iteration*4+y*2+x]
             assert actual_mr == expected_mr, f"expected {expected_mr}, got {actual_mr} for min_reached index {y*2+x}"
 
-            actual_min = index(dut.next_cd_min.value, x, FRACTION_WIDTH+1)
+            actual_min = index(dut.next_cd_min.value, x, FRACTION_WIDTH+1+TAU_WIDTH)
             expected_min = final_mins[iteration*4+y*2+x][0]
             if iteration*4+y*2+x != 0:
                 assert actual_min == expected_min, f"expected {hex(expected_min)}, got {hex(actual_min)} for min index {y*2+x}"
@@ -190,6 +214,12 @@ async def test_yin(dut):
 
         for iteration in range(WINDOW_SIZE // 4):
             await test_cumdiff(dut, iteration, window_idx)
+        await FallingEdge(dut.clk_in)
+
+        if window_idx != 0:
+            assert dut.valid_out.value == 1, f"expected valid taumin out after cumdiff processed"
+            #assert dut.taumin.value == taus[window_idx-1], f"expected {taus[window_idx-1]}, got {dut.taumin.value}"
+            print(f"expected {hex(taus[window_idx-1])}, got {hex(dut.taumin.value)}")
 
         if dut.window_toggle.value == 0:
             await RisingEdge(dut.window_toggle)
