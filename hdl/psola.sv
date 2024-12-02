@@ -2,18 +2,26 @@ module psola #(parameter WINDOW_SIZE = 2048) (
     input logic clk_in,
     input logic rst_in,
     input logic new_signal,
-    input logic signed [31:0] signal [WINDOW_SIZE-1:0],
     input logic [11:0] period,
-    output logic signed [31:0] out [2*WINDOW_SIZE-1:0],
+
+    input logic [31:0] signal_val, // from read_addr 2 cycles ago
+    input logic [31:0] curr_processed_val, // from write_addr 2 cycles ago, already summed value at write location (which needs to be added to)
+
+    output logic [LOG_WINDOW_SIZE:0] read_addr,
+    output logic [LOG_WINDOW_SIZE:0] write_addr,
+
+    output logic [31:0] write_val, // for current_write_addr
+    output logic [LOG_WINDOW_SIZE:0] write_addr_piped,
+    output logic valid_write,
+
     output logic [11:0] output_window_len,
     output logic done
 );
 
 localparam int LOG_WINDOW_SIZE = $clog2(WINDOW_SIZE);
+logic [1:0] phase;
 
-logic [LOG_WINDOW_SIZE:0] i;
-logic [LOG_WINDOW_SIZE:0] j;
-logic [LOG_WINDOW_SIZE:0] offset;
+/// PHASE 1 LOGIC ////////
 
 logic [11:0] shifted_period;
 logic [11:0] shifted_period_temp;
@@ -26,10 +34,64 @@ logic inv_period_found;
 logic div_valid_out;
 logic search_valid_out;
 
+////////////////////////////
+/// PHASE 2 LOGIC ////////
+////////////////////////////
+
+//// Relevant variables ///////////////
+
+logic [LOG_WINDOW_SIZE:0] i;
+logic [LOG_WINDOW_SIZE:0] j;
+logic [LOG_WINDOW_SIZE:0] offset;
+
+logic [LOG_WINDOW_SIZE:0] i_piped;
+logic [LOG_WINDOW_SIZE:0] j_piped;
+logic [LOG_WINDOW_SIZE:0] offset_piped;
+
 logic [31:0] window_func_val;
-logic [1:0] phase;
+
+logic valid_write;
+
+assign read_addr = i + offset;
+assign write_addr = j + offset;
+
+//// Pipeline logic ///////////////
+
+pipeline #(
+    .STAGES(2),
+    .WIDTH(LOG_WINDOW_SIZE+1)
+) pipeline_i (
+    .clk(clk_in),
+    .rst(rst_in),
+    .din(i),
+    .dout(i_piped)
+);
+
+pipeline #(
+    .STAGES(2),
+    .WIDTH(LOG_WINDOW_SIZE+1)
+) pipeline_j (
+    .clk(clk_in),
+    .rst(rst_in),
+    .din(j),
+    .dout(j_piped)
+);
+
+pipeline #(
+    .STAGES(2),
+    .WIDTH(LOG_WINDOW_SIZE+1)
+) pipeline_offset (
+    .clk(clk_in),
+    .rst(rst_in),
+    .din(offset),
+    .dout(offset_piped)
+);
 
 
+/////////////////////////////////
+
+
+////////////// Division for inv_period ///////////////
 fp_div #(
     .WIDTH(20),
     .FRACTION_WIDTH(10),
@@ -45,8 +107,9 @@ fp_div #(
     .err_out(),
     .busy()
 );
+/////////////////////////////////////////////////////
 
-
+////////////// Search for closest semitone ///////////////
 searcher closest_semitone_finder (
     .clk_in(clk_in),
     .rst_in(rst_in),
@@ -55,14 +118,18 @@ searcher closest_semitone_finder (
     .closest_value(shifted_period_temp),
     .closest_value_found(search_valid_out)
 );
+/////////////////////////////////////////////////////
 
+
+///////// Window function calculation ///////////////
 always_comb begin
     if (offset < period) begin
-        window_func_val = offset * inv_period; 
+        window_func_val = offset_piped * inv_period; 
     end else begin
-        window_func_val = (2 << 10) - offset * inv_period;
+        window_func_val = (2 << 10) - offset_piped * inv_period;
     end
 end
+/////////////////////////////////////////////////////
 
 always_ff @(posedge clk_in) begin
 
@@ -84,6 +151,8 @@ always_ff @(posedge clk_in) begin
 
         output_window_len <= 0;
 
+        write_addr_piped <= 0;
+
     end else if (new_signal) begin
 
         done <= 0;
@@ -102,9 +171,7 @@ always_ff @(posedge clk_in) begin
 
         output_window_len <= 0;
 
-        for (integer i = 0; i < 2 * WINDOW_SIZE; i = i + 1) begin
-            out[i] <= 0;
-        end
+        write_addr_piped <= 0;
 
 
     end else if (phase == 1) begin
@@ -124,27 +191,37 @@ always_ff @(posedge clk_in) begin
             phase <= 2;
         end
     
-    end else if (phase == 2 && i + period < WINDOW_SIZE) begin
-        
-        if (offset < 2 * period && i + offset < WINDOW_SIZE) begin
+    end else if (phase == 2 && i_piped + period < WINDOW_SIZE) begin
 
-            if (j + offset >= output_window_len) begin
-                output_window_len <= j + offset + 1;
-            end
+        // Logic for setting i, j, offset for reading on next cycle.
+        if (i + period < WINDOW_SIZE) begin
 
-            if (i + offset < period) begin
-                out[j + offset] <= $signed($signed(signal[i + offset]) << 10); 
+            if (offset < 2 * period && i + offset < WINDOW_SIZE) begin
+                offset <= offset + 1;
             end else begin
-                out[j + offset] <= $signed(out[j + offset]) + $signed(signal[i + offset]) * window_func_val;
+                offset <= 0;
+                i <= i + period;
+                j <= j + shifted_period;
             end
 
-            offset <= offset + 1;
+        end
 
-        end else begin
+        // Logic for using read values from BRAM (with piped i, j, offset to account for cycle delay).
+        // From the if statement, we already know that i_piped + period < WINDOW_SIZE.
+        if (offset_piped < 2 * period && i_piped + offset_piped < WINDOW_SIZE) begin
 
-            offset <= 0;
-            i <= i + period;
-            j <= j + shifted_period;
+            if (j_piped + offset_piped >= output_window_len) begin
+                output_window_len <= j_piped + offset_piped + 1;
+            end
+
+            if (i_piped + offset_piped < period) begin
+                write_val <= $signed($signed(signal_val) << 10); 
+            end else begin
+                write_val <= $signed(signal_val) + $signed(signal_val) * window_func_val;
+            end
+
+            write_addr_piped <= j_piped + offset_piped;
+            valid_write <= 1;
 
         end
 
