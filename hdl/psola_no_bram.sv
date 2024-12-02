@@ -68,16 +68,24 @@ always_comb begin
 end
 
 
-logic valid_write;
+logic [1:0] valid_write;
 logic [31:0] write_val;
 logic [LOG_WINDOW_SIZE:0] write_addr;
+logic [LOG_WINDOW_SIZE:0] write_addr_piped;
 
 always_ff @(posedge clk_in) begin
 
-    if (valid_write && !rst_in && !new_signal) begin
-        out[write_addr] <= processed_val_piped + signal_val_piped * window_func_val_piped;
-        valid_write <= 0;
+    if (valid_write[1] && !rst_in && !new_signal) begin
+        out[write_addr_piped] <= write_val;
+        valid_write[1] <= 0;
     end
+
+    if (valid_write[0] && !rst_in && !new_signal) begin
+        write_val <= processed_val_piped + signal_val_piped * window_func_val_piped;
+        write_addr_piped <= write_addr;
+        valid_write[1] <= 1;
+    end
+
 
     if (rst_in) begin    
 
@@ -96,6 +104,7 @@ always_ff @(posedge clk_in) begin
         inv_period_found <= 0;
 
         output_window_len <= 0;
+        valid_write <= 0;
 
     end else if (new_signal) begin
 
@@ -114,6 +123,7 @@ always_ff @(posedge clk_in) begin
         inv_period_found <= 0;
 
         output_window_len <= 0;
+        valid_write <= 0;
 
         for (integer i = 0; i < 2 * WINDOW_SIZE; i = i + 1) begin
             out[i] <= 0;
@@ -136,6 +146,8 @@ always_ff @(posedge clk_in) begin
         if (inv_period_found && shifted_period_found) begin
             phase <= 2;
         end
+
+        valid_write <= 0;
     
     end else if (phase == 2 && i + period < WINDOW_SIZE) begin
         
@@ -156,7 +168,7 @@ always_ff @(posedge clk_in) begin
             end
 
             write_addr <= j + offset;
-            valid_write <= 1;
+            valid_write[0] <= 1;
             offset <= offset + 1;
 
         end else begin

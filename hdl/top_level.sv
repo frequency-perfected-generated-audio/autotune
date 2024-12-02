@@ -7,7 +7,6 @@ module top_level (
     // LED Signals
     output logic [15:0] led,
 
-    input logic signed [31:0] dummy_data [2047:0],
     // Speaker Signals
     output logic spkl,
     output logic spkr,
@@ -30,8 +29,13 @@ module top_level (
     output logic [2:0] rgb0,
     output logic [2:0] rgb1,
 
+    input logic signed [31:0] dummy_sample,
+    input logic [9:0] dummy_addr,
 
-    output logic signed [31:0] out_data [4095:0]
+    input logic [10:0] output_addr,
+
+    output logic signed [31:0] out_sample
+
 );
 
     logic sys_rst;
@@ -148,7 +152,19 @@ module top_level (
     assign rgb0  = '0;
     // assign rgb1  = '0;
 
-    //logic signed [31:0] out_data [4095:0];
+    logic signed [31:0] dummy_data [2047:0];
+    logic signed [31:0] out_dummy_data [4095:0];
+
+    logic signed [31:0] out_piped;
+    logic signed [31:0] dummy_sample_piped;
+    
+
+    always_ff @(posedge clk_100mhz) begin
+        dummy_data[dummy_addr] <= dummy_sample_piped;
+        dummy_sample_piped <= dummy_sample;
+        out_piped <= out_dummy_data[output_addr];
+        out_sample <= out_piped;
+    end
 
     psola_no_bram #(
         .WINDOW_SIZE(2048)
@@ -158,7 +174,7 @@ module top_level (
         .new_signal(processed_sample_valid),
         .signal(dummy_data),
         .period(taumin),
-        .out(out_data),
+        .out(out_dummy_data),
         .output_window_len(),
         .done(rgb1)
     );
