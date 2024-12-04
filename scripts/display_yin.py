@@ -19,10 +19,11 @@ eprint("README!!! Also read the high bits")
 eprint("README!!! Aight I'm out")
 
 SERIAL_PORT_NAME = "/dev/cu.usbserial-8874292302131"
-WINDOWS_PER_SECOND = 44100 // 2048
+FS = 10**8 // (36 * 64)
+WINDOWS_PER_SECOND = FS // 2048
 SECONDS = 3
 
-ser = serial.Serial(SERIAL_PORT_NAME, bytesize=serial.EIGHTBITS, baudrate=460800)
+ser = serial.Serial(SERIAL_PORT_NAME, bytesize=serial.EIGHTBITS, baudrate=115200)
 eprint("Serial port initialized")
 
 
@@ -48,9 +49,13 @@ def live_update_demo(blit=False):
 
     while True:
         # TODO: update y
-        tau = 8 * int.from_bytes(ser.read(), "little")
+        hibits = int.from_bytes(ser.read(), "little")
+        lobits = int.from_bytes(ser.read(), "little")
+        print(f"{hibits:08b} {lobits:08b}")
+        tau = hibits * 256 + lobits
+        print(f"{tau:16b}")
         f0 = np.roll(f0, -1)
-        tone = 44100 / (tau + 0.01)
+        tone = FS / (tau + 0.01)
         f0[-1] = tone
         print(f"{tau=} {tone=}")
         line.set_data(x, f0)

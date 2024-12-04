@@ -27,14 +27,14 @@ module top_level (
 
     // RGB Signals
     output logic [2:0] rgb0,
-    output logic [2:0] rgb1,
+    output logic [2:0] rgb1
 
-    input logic signed [31:0] dummy_sample,
-    input logic [9:0] dummy_addr,
-
-    input logic [10:0] output_addr,
-
-    output logic signed [31:0] out_sample
+    // input logic signed [31:0] dummy_sample,
+    // input logic [9:0] dummy_addr,
+    //
+    // input logic [10:0] output_addr,
+    //
+    // output logic signed [31:0] out_sample
 
 );
 
@@ -97,19 +97,18 @@ module top_level (
     logic raw_taumin_valid;
 
 
-    uart_transmit #(
+    uart_turbo_transmit #(
         .INPUT_CLOCK_FREQ(100_000_000),
-        .BAUD_RATE(460800)
-    ) uart_tx (
+        .BAUD_RATE(115200)
+    ) uart_turbo_tx (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        .data_byte_in(raw_taumin[10:3]),
-        .trigger_in  (raw_taumin_valid),
+        .data_in({5'b0, raw_taumin}),
+        .trigger_in(raw_taumin_valid),
 
         .busy_out(),
         .tx_wire_out(uart_txd)
-
     );
 
     yin #(
@@ -152,32 +151,32 @@ module top_level (
     assign rgb0  = '0;
     // assign rgb1  = '0;
 
-    logic signed [31:0] dummy_data [2047:0];
-    logic signed [31:0] out_dummy_data [4095:0];
-
-    logic signed [31:0] out_piped;
-    logic signed [31:0] dummy_sample_piped;
-    
-
-    always_ff @(posedge clk_100mhz) begin
-        dummy_data[dummy_addr] <= dummy_sample_piped;
-        dummy_sample_piped <= dummy_sample;
-        out_piped <= out_dummy_data[output_addr];
-        out_sample <= out_piped;
-    end
-
-    psola_no_bram #(
-        .WINDOW_SIZE(2048)
-    ) psola (
-        .clk_in(clk_100mhz),
-        .rst_in(sys_rst),
-        .new_signal(processed_sample_valid),
-        .signal(dummy_data),
-        .period(taumin),
-        .out(out_dummy_data),
-        .output_window_len(),
-        .done(rgb1)
-    );
+    // logic signed [31:0] dummy_data[2047:0];
+    // logic signed [31:0] out_dummy_data[4095:0];
+    //
+    // logic signed [31:0] out_piped;
+    // logic signed [31:0] dummy_sample_piped;
+    //
+    //
+    // always_ff @(posedge clk_100mhz) begin
+    //     dummy_data[dummy_addr] <= dummy_sample_piped;
+    //     dummy_sample_piped <= dummy_sample;
+    //     out_piped <= out_dummy_data[output_addr];
+    //     out_sample <= out_piped;
+    // end
+    //
+    // psola_no_bram #(
+    //     .WINDOW_SIZE(2048)
+    // ) psola (
+    //     .clk_in(clk_100mhz),
+    //     .rst_in(sys_rst),
+    //     .new_signal(processed_sample_valid),
+    //     .signal(dummy_data),
+    //     .period(taumin),
+    //     .out(out_dummy_data),
+    //     .output_window_len(),
+    //     .done(rgb1)
+    // );
 
 endmodule
 
