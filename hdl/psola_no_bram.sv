@@ -81,7 +81,7 @@ always_ff @(posedge clk_in) begin
     end
 
     if (valid_write[0] && !rst_in && !new_signal) begin
-        write_val <= processed_val_piped + signal_val_piped * window_func_val_piped;
+        write_val <= $signed(processed_val_piped) + $signed(signal_val_piped) * window_func_val_piped;
         write_addr_piped <= write_addr;
         valid_write[1] <= 1;
     end
@@ -157,14 +157,13 @@ always_ff @(posedge clk_in) begin
                 output_window_len <= j + offset + 1;
             end
 
+            signal_val_piped <= signal[i + offset]; 
             if (i + offset < period) begin
                 window_func_val_piped <= (1 << 10);
-                signal_val_piped <= $signed(signal[i + offset]); 
                 processed_val_piped <= 0;
             end else begin
                 window_func_val_piped <= window_func_val;
-                signal_val_piped <= $signed(signal[i + offset]);
-                processed_val_piped <= $signed(out[j + offset]);
+                processed_val_piped <= out[j + offset];
             end
 
             write_addr <= j + offset;

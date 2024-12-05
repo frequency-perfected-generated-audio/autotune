@@ -88,7 +88,7 @@ async def test_psola(dut):
 
     # Save the processed audio
     # processed_signal = np.array(processed_signal, dtype=np.int16)
-    sf.write("cocotb_psola_output.wav", processed_signal, SAMPLE_RATE)
+    sf.write("cocotb_psola_bram_output.wav", processed_signal, SAMPLE_RATE)
 
     # Plot the original signal
     plt.figure(figsize=(14, 7))
@@ -109,10 +109,10 @@ async def test_psola(dut):
 
     plt.tight_layout()
 
-    plt.savefig("waveform_plots.png")
+    plt.savefig("waveform_plots_psola_bram.png")
     plt.show()
 
-    dut._log.info("Processed audio saved to cocotb_psola_output.wav")
+    dut._log.info("Processed audio saved to cocotb_psola_bram_output.wav")
 
 
 def main():
@@ -120,10 +120,12 @@ def main():
     sim = os.getenv("SIM", "icarus")
     proj_path = Path(__file__).resolve().parent.parent
     sys.path.append(str(proj_path / "sim" / "model"))
-    sources = [proj_path / "hdl" / "psola_no_bram.sv"]
+    sources = [proj_path / "hdl" / "bram_wrapper.sv"]
     sources += [
+        proj_path / "hdl" / "psola.sv",
         proj_path / "hdl" / "searcher.sv",
         proj_path / "hdl" / "xilinx_single_port_ram_read_first.sv",
+        proj_path / "hdl" / "xilinx_true_dual_port_read_first_1_clock_ram.v",
         proj_path / "hdl" / "fp_div.sv",
     ]
     build_test_args = ["-Wall"]
@@ -132,7 +134,7 @@ def main():
     runner = get_runner(sim)
     runner.build(
         sources=sources,
-        hdl_toplevel="psola_no_bram",
+        hdl_toplevel="bram_wrapper",
         always=True,
         build_args=build_test_args,
         parameters=parameters,
@@ -141,8 +143,8 @@ def main():
     )
     run_test_args = []
     runner.test(
-        hdl_toplevel="psola_no_bram",
-        test_module="test_psola_no_bram",
+        hdl_toplevel="bram_wrapper",
+        test_module="test_psola_bram",
         test_args=run_test_args,
         waves=True,
     )

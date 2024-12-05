@@ -150,10 +150,10 @@ module top_level (
     assign ss1_c = ss_c;
 
     assign rgb0  = '0;
-    // assign rgb1  = '0;
+    assign rgb1  = '0;
 
-    logic signed [31:0] dummy_data [2047:0];
-    logic signed [31:0] out_dummy_data [4095:0];
+    (* ram_style = "block" *) logic signed [31:0] dummy_data [2047:0];
+    (* ram_style = "block" *) logic signed [31:0] out_dummy_data [4095:0];
 
     logic signed [31:0] out_piped;
     logic signed [31:0] dummy_sample_piped;

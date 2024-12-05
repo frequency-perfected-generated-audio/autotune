@@ -217,7 +217,7 @@ always_ff @(posedge clk_in) begin
             if (i_piped + offset_piped < period) begin
                 write_val <= $signed($signed(signal_val) << 10); 
             end else begin
-                write_val <= $signed(signal_val) + $signed(signal_val) * window_func_val;
+                write_val <= $signed(curr_processed_val) + $signed(signal_val) * window_func_val;
             end
 
             write_addr_piped <= j_piped + offset_piped;
