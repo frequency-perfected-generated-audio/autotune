@@ -1,3 +1,4 @@
+`default_nettype none
 module bram_wrapper #(
     parameter WINDOW_SIZE = 2048,
     parameter MAX_EXTENDED = 2200
@@ -18,7 +19,7 @@ module bram_wrapper #(
     output logic valid_out_piped,
 
     output logic done
-)
+);
 
 // determines which portion BRAM to write to, alternates
 // parity 0 indicates using first half for psola, writing to second half; vice versa
@@ -34,8 +35,8 @@ logic [1:0] phase;  // 0: psola, 1: output, 2: idle; reading happens in parallel
 logic [31:0] psola_in_signal_val;
 logic [31:0] psola_in_curr_processed_val;
 
-logic [LOG_WINDOW_SIZE:0] psola_read_addr;
-logic [LOG_WINDOW_SIZE:0] psola_write_addr;
+logic [$clog2(WINDOW_SIZE) - 1:0] psola_read_addr;
+logic [$clog2(MAX_EXTENDED) - 1:0] psola_write_addr;
 
 logic [31:0] psola_write_val;
 logic [31:0] psola_write_addr_piped;
@@ -45,9 +46,30 @@ logic [$clog2(MAX_EXTENDED)-1:0] psola_output_window_len;
 
 // BRAM output registers
 
-
 logic [$clog2(MAX_EXTENDED) - 1:0] out_addr;
 logic valid_out;
+
+// Pipelined output registers
+
+pipeline #(
+    .STAGES(2),
+    .WIDTH(1)
+) valid_out_pipeline (
+    .clk(clk_in),
+    .rst(rst_in),
+    .din(valid_out),
+    .dout(valid_out_piped)
+);
+
+pipeline #(
+    .STAGES(2),
+    .WIDTH($clog2(MAX_EXTENDED))
+) out_addr_pipeline (
+    .clk(clk_in),
+    .rst(rst_in),
+    .din(out_addr),
+    .dout(out_addr_piped)
+);
 
 
 // BRAM storing signal values for current and next window
@@ -94,9 +116,11 @@ xilinx_true_dual_port_read_first_1_clock_ram #(
     .rstb(rst_in),             
     .regcea(1),          
     .regceb(1),         
-    .douta((phase == 0) ? psola_in_curr_processed_val : out_val),  
+    .douta(out_val),  
     .doutb()  
-)
+);
+
+assign psola_in_curr_processed_val = out_val; 
 
 psola #(
     .WINDOW_SIZE(WINDOW_SIZE)
@@ -105,7 +129,7 @@ psola #(
     .rst_in(rst_in),
     .new_signal(new_signal),
     .period(period),
-    .signal(psola_in_signal_val),
+    .signal_val(psola_in_signal_val),
     .curr_processed_val(psola_in_curr_processed_val),
     .read_addr(psola_read_addr),
     .write_addr(psola_write_addr),
@@ -127,10 +151,16 @@ always_ff @(posedge clk_in) begin
         read_done <= 0;
         output_done <= 0;
 
+        valid_out <= 0;
+        out_addr <= 0;
+
     end else if (output_done && read_done) begin
 
         phase <= 0;
         done <= 1;
+
+        valid_out <= 0;
+        out_addr <= 0;
 
     end else if (new_signal) begin
 
@@ -138,6 +168,9 @@ always_ff @(posedge clk_in) begin
         phase <= 0;
         read_done <= 0;
         output_done <= 0;
+
+        valid_out <= 0;
+        out_addr <= 0;
 
     end else if (phase == 0) begin
 

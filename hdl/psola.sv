@@ -1,3 +1,4 @@
+`default_nettype none
 module psola #(parameter WINDOW_SIZE = 2048) (
     input logic clk_in,
     input logic rst_in,
@@ -49,8 +50,6 @@ logic [LOG_WINDOW_SIZE:0] j_piped;
 logic [LOG_WINDOW_SIZE:0] offset_piped;
 
 logic [31:0] window_func_val;
-
-logic valid_write;
 
 assign read_addr = i + offset;
 assign write_addr = j + offset;

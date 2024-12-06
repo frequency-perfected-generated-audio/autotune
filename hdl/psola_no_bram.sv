@@ -1,3 +1,4 @@
+`default_nettype none
 module psola_no_bram #(parameter WINDOW_SIZE = 2048) (
     input logic clk_in,
     input logic rst_in,

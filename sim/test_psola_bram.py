@@ -27,27 +27,37 @@ async def reset(dut, cycles=2):
     await ClockCycles(dut.clk_in, cycles)
 
 
-async def process_window(dut, window, period):
+async def process_window(dut, next_window, period):
     """Process a single window of audio through the PSOLA module."""
     await FallingEdge(dut.clk_in)
-    for i in range(WINDOW_SIZE):
-        dut.signal[i].value = window[i]
     dut.period.value = period
     dut.new_signal.value = 1
     await FallingEdge(dut.clk_in)
     dut.new_signal.value = 0
 
-    # await ClockCycles(dut.clk_in, 15000)
-    await RisingEdge(dut.done)
+    out = []
+    cycle = 0
+    while dut.done.value == 0:
+
+        # Streaming in next window
+        if cycle % 3 == 0 and cycle < 3 * WINDOW_SIZE:
+            dut.next_window_val.value = next_window[cycle // 3]
+            dut.val_addr.value = cycle // 3
+            dut.valid_in_val.value = 1
+        else:
+            dut.valid_in_val.value = 0
+
+        if dut.valid_out_piped.value.integer == 1:
+            out.append(dut.out_val.value.integer)
+
+        await ClockCycles(dut.clk_in, 1)
+        cycle += 1
 
     # Collect output
     output_window_len = dut.output_window_len.value.integer
     dut._log.info(f"PSOLA produced window of length {output_window_len}")
 
-    output = [
-        dut.out[i].value.signed_integer / (2**20) for i in range(output_window_len)
-    ]
-    return output
+    return out
 
 
 @cocotb.test()
@@ -70,6 +80,8 @@ async def test_psola(dut):
     input_wave, _ = librosa.load(AUDIO_PATH, sr=SAMPLE_RATE)
     with open(PERIODS_PATH, "r") as file:
         periods = [int(SAMPLE_RATE / float(line.strip())) for line in file]
+
+    periods = [50] + periods
 
     input_wave = input_wave[: len(periods) * WINDOW_SIZE]
 
@@ -127,6 +139,7 @@ def main():
         proj_path / "hdl" / "xilinx_single_port_ram_read_first.sv",
         proj_path / "hdl" / "xilinx_true_dual_port_read_first_1_clock_ram.v",
         proj_path / "hdl" / "fp_div.sv",
+        proj_path / "hdl" / "pipeline.sv",
     ]
     build_test_args = ["-Wall"]
     parameters = {"WINDOW_SIZE": WINDOW_SIZE}
