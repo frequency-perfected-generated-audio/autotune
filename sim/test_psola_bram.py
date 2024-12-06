@@ -1,18 +1,16 @@
-import numpy as np
-import wave
-import librosa
-import soundfile as sf
-from pathlib import Path
-
-from matplotlib import pyplot as plt
-
 import os
 import sys
+import wave
+from pathlib import Path
 
 import cocotb
+import librosa
+import numpy as np
+import soundfile as sf
 from cocotb.clock import Clock
 from cocotb.runner import get_runner
 from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
+from matplotlib import pyplot as plt
 
 WINDOW_SIZE = 2048  # Change if your module uses a different size
 SAMPLE_RATE = 44100
@@ -39,7 +37,6 @@ async def process_window(dut, next_window, period):
     out = []
     cycle = 0
     while dut.read_done.value.integer == 0 or dut.output_done.value.integer == 0:
-
         # Streaming in next window
         if cycle % 3 == 0 and cycle < 3 * WINDOW_SIZE:
             dut.next_window_val.value = next_window[cycle // 3]
