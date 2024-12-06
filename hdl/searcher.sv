@@ -1,6 +1,6 @@
 `ifdef SYNTHESIS
 `define FPATH(X) `"X`"
-`else /* ! SYNTHESIS */
+`else  /* ! SYNTHESIS */
 `define FPATH(X) `"../../data/X`"
 `endif  /* ! SYNTHESIS */
 
@@ -18,25 +18,25 @@ module searcher #(
 
     logic cycle_parity;
     logic searching;
-    
-    logic [$clog2(BRAM_SIZE): 0] curr_read_addr;
+
+    logic [$clog2(BRAM_SIZE):0] curr_read_addr;
     logic [WIDTH-1:0] prev_diff;
     logic [WIDTH-1:0] val_from_bram;
 
     xilinx_single_port_ram_read_first #(
-    .RAM_WIDTH(WIDTH),                       
-    .RAM_DEPTH(BRAM_SIZE),                     
-    .RAM_PERFORMANCE("HIGH_PERFORMANCE"),
-    // .INIT_FILE(`FPATH(semitones.mem))
-    .INIT_FILE("/home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/data/semitones.mem")
+        .RAM_WIDTH(WIDTH),
+        .RAM_DEPTH(BRAM_SIZE),
+        .RAM_PERFORMANCE("HIGH_PERFORMANCE"),
+        // .INIT_FILE(`FPATH(semitones.mem))
+        .INIT_FILE("/home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/data/semitones.mem")
     ) freqs_ram (
         .addra(curr_read_addr),
         .dina(0),
         .clka(clk_in),
-        .wea(0),      
-        .ena(1),      
+        .wea(0),
+        .ena(1),
         .rsta(rst_in),
-        .regcea(1), 
+        .regcea(1),
         .douta(val_from_bram)
     );
 
@@ -63,9 +63,7 @@ module searcher #(
             closest_value <= 0;
             closest_value_found <= 0;
 
-        end
-        
-        else if (!cycle_parity) begin
+        end else if (!cycle_parity) begin
 
             if (closest_value_found) begin
 
@@ -84,7 +82,7 @@ module searcher #(
                     if (prev_diff > val_from_bram - search_val) begin
                         closest_value <= val_from_bram;
                     end else begin
-                        closest_value <= search_val - prev_diff; 
+                        closest_value <= search_val - prev_diff;
                     end
 
                     closest_value_found <= 1;
@@ -94,9 +92,7 @@ module searcher #(
                     closest_value <= val_from_bram;
                     closest_value_found <= 1;
 
-                end
-                
-                else begin
+                end else begin
 
                     prev_diff <= search_val - val_from_bram;
                     curr_read_addr <= curr_read_addr + 1;
