@@ -1,7 +1,7 @@
 `default_nettype none
 module psola #(
     parameter WINDOW_SIZE = 2048
-) (
+
     input logic clk_in,
     input logic rst_in,
     input logic new_signal,
@@ -147,9 +147,7 @@ module psola #(
     /////////////////////////////////////////////////////
 
     always_ff @(posedge clk_in) begin
-
         if (rst_in) begin
-
             done <= 0;
 
             i <= 0;
@@ -167,9 +165,7 @@ module psola #(
             output_window_len <= 0;
 
             write_addr_piped <= 0;
-
         end else if (new_signal) begin
-
             done <= 0;
 
             i <= 0;
@@ -187,10 +183,7 @@ module psola #(
             output_window_len <= 0;
 
             write_addr_piped <= 0;
-
-
         end else if (phase == 1) begin
-
             if (div_valid_out) begin
                 inv_period_found <= 1;
                 inv_period <= inv_period_temp;
@@ -205,12 +198,9 @@ module psola #(
             if (inv_period_found && shifted_period_found) begin
                 phase <= 2;
             end
-
         end else if (phase == 2 && i_piped + period < WINDOW_SIZE) begin
-
             // Logic for setting i, j, offset for reading on next cycle.
             if (i + period < WINDOW_SIZE) begin
-
                 if (offset < 2 * period && i + offset < WINDOW_SIZE) begin
                     offset <= offset + 1;
                 end else begin
@@ -218,13 +208,11 @@ module psola #(
                     i <= i + period;
                     j <= j + shifted_period;
                 end
-
             end
 
             // Logic for using read values from BRAM (with piped i, j, offset to account for cycle delay).
             // From the if statement, we already know that i_piped + period < WINDOW_SIZE.
             if (offset_piped < 2 * period && i_piped + offset_piped < WINDOW_SIZE) begin
-
                 if (j_piped + offset_piped >= output_window_len) begin
                     output_window_len <= j_piped + offset_piped + 1;
                 end
@@ -238,21 +226,13 @@ module psola #(
 
                 write_addr_piped <= j_piped + offset_piped;
                 valid_write <= 1;
-
             end
-
         end else begin
-
             if (phase == 2) begin
                 done <= 1;
             end
             phase <= 0;
-
         end
-
     end
-
-
-
 endmodule
-
+`default_nettype wire
