@@ -30,14 +30,15 @@ async def reset(dut, cycles=2):
 async def process_window(dut, next_window, period):
     """Process a single window of audio through the PSOLA module."""
     await FallingEdge(dut.clk_in)
-    dut.period.value = period
+    dut.period.value = 50  # period
     dut.new_signal.value = 1
     await FallingEdge(dut.clk_in)
     dut.new_signal.value = 0
+    await ClockCycles(dut.clk_in, 2)
 
     out = []
     cycle = 0
-    while dut.done.value == 0:
+    while dut.read_done.value.integer == 0 or dut.output_done.value.integer == 0:
 
         # Streaming in next window
         if cycle % 3 == 0 and cycle < 3 * WINDOW_SIZE:
@@ -48,14 +49,15 @@ async def process_window(dut, next_window, period):
             dut.valid_in_val.value = 0
 
         if dut.valid_out_piped.value.integer == 1:
-            out.append(dut.out_val.value.integer)
+            out.append(dut.out_val.value.signed_integer / (2**20))
 
         await ClockCycles(dut.clk_in, 1)
         cycle += 1
 
     # Collect output
-    output_window_len = dut.output_window_len.value.integer
-    dut._log.info(f"PSOLA produced window of length {output_window_len}")
+    dut._log.info(f"PSOLA produced window of length {len(out)}")
+    # output_window_len = dut.output_window_len.value.integer
+    # dut._log.info(f"PSOLA produced window of length {output_window_len}")
 
     return out
 
@@ -66,7 +68,7 @@ async def test_psola(dut):
     # Start the clock
     cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     # Reset the DUT
-    await reset(dut)
+    await reset(dut, cycles=5)
 
     BASE_PATH = Path(__file__).resolve().parent.parent
 
@@ -81,7 +83,7 @@ async def test_psola(dut):
     with open(PERIODS_PATH, "r") as file:
         periods = [int(SAMPLE_RATE / float(line.strip())) for line in file]
 
-    periods = [50] + periods
+    periods = [50] + periods[:-1]
 
     input_wave = input_wave[: len(periods) * WINDOW_SIZE]
 
@@ -99,7 +101,7 @@ async def test_psola(dut):
         processed_signal.extend(output_window)
 
     # Save the processed audio
-    # processed_signal = np.array(processed_signal, dtype=np.int16)
+    processed_signal = np.array(processed_signal, dtype=np.int32)
     sf.write("cocotb_psola_bram_output.wav", processed_signal, SAMPLE_RATE)
 
     # Plot the original signal

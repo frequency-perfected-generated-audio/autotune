@@ -10,11 +10,11 @@ module bram_wrapper #(
     input logic [11:0] period,
 
     // gets next window of input while running psola on current
-    input logic [31:0] next_window_val,
+    input logic signed [31:0] next_window_val,
     input logic [$clog2(WINDOW_SIZE) - 1:0] val_addr,
     input logic valid_in_val,
 
-    output logic [31:0] out_val,
+    output logic signed [31:0] out_val,
     output logic [$clog2(MAX_EXTENDED) - 1:0] out_addr_piped,
     output logic valid_out_piped,
 
@@ -154,20 +154,20 @@ always_ff @(posedge clk_in) begin
         valid_out <= 0;
         out_addr <= 0;
 
-    end else if (output_done && read_done) begin
-
-        phase <= 0;
-        done <= 1;
-
-        valid_out <= 0;
-        out_addr <= 0;
-
     end else if (new_signal) begin
 
         window_parity <= ~window_parity;
         phase <= 0;
         read_done <= 0;
         output_done <= 0;
+
+        valid_out <= 0;
+        out_addr <= 0;
+
+    end else if (output_done && read_done) begin
+
+        phase <= 0;
+        done <= 1;
 
         valid_out <= 0;
         out_addr <= 0;
@@ -180,8 +180,16 @@ always_ff @(posedge clk_in) begin
 
     end else if (phase == 1) begin
 
-        out_addr <= out_addr + 1;
-        valid_out <= 1;
+        if (out_addr_piped == psola_output_window_len - 1) begin
+            output_done <= 1;
+            valid_out <= 0;
+        end else if (out_addr < psola_output_window_len - 1) begin
+            out_addr <= out_addr + 1;
+            valid_out <= 1;
+        end else begin
+            valid_out <= 0;
+        end
+
 
     end
 
@@ -189,9 +197,7 @@ always_ff @(posedge clk_in) begin
         read_done <= 1;
     end
 
-    if (phase == 1 && out_addr_piped == psola_output_window_len - 1) begin
-        output_done <= 1;
-    end
+    
 
 end
 

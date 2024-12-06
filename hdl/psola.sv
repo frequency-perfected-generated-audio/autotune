@@ -54,6 +54,10 @@ logic [31:0] window_func_val;
 assign read_addr = i + offset;
 assign write_addr = j + offset;
 
+logic valid_read;
+assign valid_read = (phase == 2 && offset < 2 * period && i + offset < WINDOW_SIZE && i + period < WINDOW_SIZE);
+logic valid_read_piped;
+
 //// Pipeline logic ///////////////
 
 pipeline #(
@@ -84,6 +88,16 @@ pipeline #(
     .rst(rst_in),
     .din(offset),
     .dout(offset_piped)
+);
+
+pipeline #(
+    .STAGES(2),
+    .WIDTH(1)
+) pipeline_valid_read (
+    .clk(clk_in),
+    .rst(rst_in),
+    .din(valid_read),
+    .dout(valid_read_piped)
 );
 
 
@@ -213,9 +227,9 @@ always_ff @(posedge clk_in) begin
                 output_window_len <= j_piped + offset_piped + 1;
             end
 
-            if (i_piped + offset_piped < period) begin
+            if (i_piped + offset_piped < period && valid_read) begin
                 write_val <= $signed($signed(signal_val) << 10); 
-            end else begin
+            end else if (valid_read) begin
                 write_val <= $signed(curr_processed_val) + $signed(signal_val) * window_func_val;
             end
 
