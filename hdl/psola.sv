@@ -1,13 +1,20 @@
 `default_nettype none
 module psola #(
     parameter WINDOW_SIZE = 2048
-
+    )(
     input logic clk_in,
     input logic rst_in,
-    input logic new_signal,
-    input logic [11:0] period,
 
+    // Actual audio processing
+    input logic tau_valid_in,
+    input logic [10:0] tau_in,
+
+    output logic [11:0] window_len_out,
+    output logic window_len_valid_out,
+
+    // BRAM Handling
     input logic [31:0] signal_val,  // from read_addr 2 cycles ago
+    // FRUTI: should there be a valid here?
     input logic [31:0] curr_processed_val, // from write_addr 2 cycles ago, already summed value at write location (which needs to be added to)
 
     output logic [LOG_WINDOW_SIZE:0] read_addr,
@@ -15,10 +22,7 @@ module psola #(
 
     output logic [31:0] write_val,  // for current_write_addr
     output logic [LOG_WINDOW_SIZE:0] write_addr_piped,
-    output logic valid_write,
-
-    output logic [11:0] output_window_len,
-    output logic done
+    output logic valid_write
 );
 
     localparam int LOG_WINDOW_SIZE = $clog2(WINDOW_SIZE);
@@ -26,13 +30,13 @@ module psola #(
 
     /// PHASE 1 LOGIC ////////
 
-    logic [11:0] shifted_period;
-    logic [11:0] shifted_period_temp;
-    logic [11:0] inv_period;
-    logic [11:0] inv_period_temp;
+    logic [11:0] shifted_tau_in;
+    logic [11:0] shifted_tau_in_temp;
+    logic [11:0] inv_tau_in;
+    logic [11:0] inv_tau_in_temp;
 
-    logic shifted_period_found;
-    logic inv_period_found;
+    logic shifted_tau_in_found;
+    logic inv_tau_in_found;
 
     logic div_valid_out;
     logic search_valid_out;
@@ -57,7 +61,7 @@ module psola #(
     assign write_addr = j + offset;
 
     logic valid_read;
-    assign valid_read = (phase == 2 && offset < 2 * period && i + offset < WINDOW_SIZE && i + period < WINDOW_SIZE);
+    assign valid_read = (phase == 2 && offset < 2 * tau_in && i + offset < WINDOW_SIZE && i + tau_in < WINDOW_SIZE);
     logic valid_read_piped;
 
     //// Pipeline logic ///////////////
@@ -106,18 +110,18 @@ module psola #(
     /////////////////////////////////
 
 
-    ////////////// Division for inv_period ///////////////
+    ////////////// Division for inv_tau_in ///////////////
     fp_div #(
         .WIDTH(20),
         .FRACTION_WIDTH(10),
         .NUM_STAGES(8)
-    ) period_div (
+    ) tau_in_div (
         .clk_in(clk_in),
         .rst_in(rst_in),
         .dividend_in(1),
-        .divisor_in(period),
-        .valid_in(new_signal),
-        .quotient_out(inv_period_temp),
+        .divisor_in(tau_in),
+        .valid_in(tau_valid_in),
+        .quotient_out(inv_tau_in_temp),
         .valid_out(div_valid_out),
         .err_out(),
         .busy()
@@ -128,9 +132,9 @@ module psola #(
     searcher closest_semitone_finder (
         .clk_in(clk_in),
         .rst_in(rst_in),
-        .start_search(new_signal),
-        .search_val(period),
-        .closest_value(shifted_period_temp),
+        .start_search(tau_valid_in),
+        .search_val(tau_in),
+        .closest_value(shifted_tau_in_temp),
         .closest_value_found(search_valid_out)
     );
     /////////////////////////////////////////////////////
@@ -138,17 +142,17 @@ module psola #(
 
     ///////// Window function calculation ///////////////
     always_comb begin
-        if (offset < period) begin
-            window_func_val = offset_piped * inv_period;
+        if (offset < tau_in) begin
+            window_func_val = offset_piped * inv_tau_in;
         end else begin
-            window_func_val = (2 << 10) - offset_piped * inv_period;
+            window_func_val = (2 << 10) - offset_piped * inv_tau_in;
         end
     end
     /////////////////////////////////////////////////////
 
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
-            done <= 0;
+            window_len_valid_out <= 0;
 
             i <= 0;
             j <= 0;
@@ -156,17 +160,17 @@ module psola #(
 
             phase <= 0;
 
-            shifted_period <= 0;
-            inv_period <= 0;
+            shifted_tau_in <= 0;
+            inv_tau_in <= 0;
 
-            shifted_period_found <= 0;
-            inv_period_found <= 0;
+            shifted_tau_in_found <= 0;
+            inv_tau_in_found <= 0;
 
-            output_window_len <= 0;
+            window_len_out <= 0;
 
             write_addr_piped <= 0;
-        end else if (new_signal) begin
-            done <= 0;
+        end else if (tau_valid_in) begin
+            window_len_valid_out <= 0;
 
             i <= 0;
             j <= 0;
@@ -174,52 +178,52 @@ module psola #(
 
             phase <= 1;
 
-            shifted_period <= 0;
-            inv_period <= 0;
+            shifted_tau_in <= 0;
+            inv_tau_in <= 0;
 
-            shifted_period_found <= 0;
-            inv_period_found <= 0;
+            shifted_tau_in_found <= 0;
+            inv_tau_in_found <= 0;
 
-            output_window_len <= 0;
+            window_len_out <= 0;
 
             write_addr_piped <= 0;
         end else if (phase == 1) begin
             if (div_valid_out) begin
-                inv_period_found <= 1;
-                inv_period <= inv_period_temp;
+                inv_tau_in_found <= 1;
+                inv_tau_in <= inv_tau_in_temp;
             end
 
             if (search_valid_out) begin
-                shifted_period_found <= 1;
-                shifted_period <= shifted_period_temp;
-                // shifted_period <= period;
+                shifted_tau_in_found <= 1;
+                shifted_tau_in <= shifted_tau_in_temp;
+                // shifted_tau_in <= tau_in;
             end
 
-            if (inv_period_found && shifted_period_found) begin
+            if (inv_tau_in_found && shifted_tau_in_found) begin
                 phase <= 2;
             end
-        end else if (phase == 2 && i_piped + period < WINDOW_SIZE) begin
+        end else if (phase == 2 && i_piped + tau_in < WINDOW_SIZE) begin
             // Logic for setting i, j, offset for reading on next cycle.
-            if (i + period < WINDOW_SIZE) begin
-                if (offset < 2 * period && i + offset < WINDOW_SIZE) begin
+            if (i + tau_in < WINDOW_SIZE) begin
+                if (offset < 2 * tau_in && i + offset < WINDOW_SIZE) begin
                     offset <= offset + 1;
                 end else begin
                     offset <= 0;
-                    i <= i + period;
-                    j <= j + shifted_period;
+                    i <= i + tau_in;
+                    j <= j + shifted_tau_in;
                 end
             end
 
             // Logic for using read values from BRAM (with piped i, j, offset to account for cycle delay).
-            // From the if statement, we already know that i_piped + period < WINDOW_SIZE.
-            if (offset_piped < 2 * period && i_piped + offset_piped < WINDOW_SIZE) begin
-                if (j_piped + offset_piped >= output_window_len) begin
-                    output_window_len <= j_piped + offset_piped + 1;
+            // From the if statement, we already know that i_piped + tau_in < WINDOW_SIZE.
+            if (offset_piped < 2 * tau_in && i_piped + offset_piped < WINDOW_SIZE) begin
+                if (j_piped + offset_piped >= window_len_out) begin
+                    window_len_out <= j_piped + offset_piped + 1;
                 end
 
-                if (i_piped + offset_piped < period && valid_read) begin
+                if (i_piped + offset_piped < tau_in && valid_read_piped) begin
                     write_val <= $signed($signed(signal_val) << 10);
-                end else if (valid_read) begin
+                end else if (valid_read_piped) begin
                     write_val <= $signed(curr_processed_val) +
                         $signed(signal_val) * window_func_val;
                 end
@@ -229,7 +233,7 @@ module psola #(
             end
         end else begin
             if (phase == 2) begin
-                done <= 1;
+                window_len_valid_out <= 1;
             end
             phase <= 0;
         end

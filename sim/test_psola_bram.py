@@ -25,13 +25,13 @@ async def reset(dut, cycles=2):
     await ClockCycles(dut.clk_in, cycles)
 
 
-async def process_window(dut, next_window, period):
+async def process_window(dut, next_window, tau_in):
     """Process a single window of audio through the PSOLA module."""
     await FallingEdge(dut.clk_in)
-    dut.period.value = 50  # period
-    dut.new_signal.value = 1
+    dut.tau_in.value = 50  # tau_in
+    dut.tau_valid_in.value = 1
     await FallingEdge(dut.clk_in)
-    dut.new_signal.value = 0
+    dut.tau_valid_in.value = 0
     await ClockCycles(dut.clk_in, 2)
 
     out = []
@@ -39,11 +39,11 @@ async def process_window(dut, next_window, period):
     while dut.read_done.value.integer == 0 or dut.output_done.value.integer == 0:
         # Streaming in next window
         if cycle % 3 == 0 and cycle < 3 * WINDOW_SIZE:
-            dut.next_window_val.value = next_window[cycle // 3]
-            dut.val_addr.value = cycle // 3
-            dut.valid_in_val.value = 1
+            dut.sample_in.value = next_window[cycle // 3]
+            dut.addr_in.value = cycle // 3
+            dut.sample_valid_in.value = 1
         else:
-            dut.valid_in_val.value = 0
+            dut.sample_valid_in.value = 0
 
         if dut.valid_out_piped.value.integer == 1:
             out.append(dut.out_val.value.signed_integer / (2**20))
@@ -53,8 +53,8 @@ async def process_window(dut, next_window, period):
 
     # Collect output
     dut._log.info(f"PSOLA produced window of length {len(out)}")
-    # output_window_len = dut.output_window_len.value.integer
-    # dut._log.info(f"PSOLA produced window of length {output_window_len}")
+    # window_len_out = dut.window_len_out.value.integer
+    # dut._log.info(f"PSOLA produced window of length {window_len_out}")
 
     return out
 
@@ -70,31 +70,31 @@ async def test_psola(dut):
     BASE_PATH = Path(__file__).resolve().parent.parent
 
     # AUDIO_PATH = BASE_PATH / "test_data" / "aladdin-new.wav"
-    # PERIODS_PATH = BASE_PATH / "test_data" / "aladdin-new-windows.txt"
+    # tau_inS_PATH = BASE_PATH / "test_data" / "aladdin-new-windows.txt"
 
     AUDIO_PATH = BASE_PATH / "test_data" / "slide.wav"
-    PERIODS_PATH = BASE_PATH / "test_data" / "slide-windows.txt"
+    tau_inS_PATH = BASE_PATH / "test_data" / "slide-windows.txt"
 
-    # Load the audio file and periods from YIN
+    # Load the audio file and tau_ins from YIN
     input_wave, _ = librosa.load(AUDIO_PATH, sr=SAMPLE_RATE)
-    with open(PERIODS_PATH, "r") as file:
-        periods = [int(SAMPLE_RATE / float(line.strip())) for line in file]
+    with open(tau_inS_PATH, "r") as file:
+        tau_ins = [int(SAMPLE_RATE / float(line.strip())) for line in file]
 
-    periods = [50] + periods[:-1]
+    tau_ins = [50] + tau_ins[:-1]
 
-    input_wave = input_wave[: len(periods) * WINDOW_SIZE]
+    input_wave = input_wave[: len(tau_ins) * WINDOW_SIZE]
 
     # Split audio into windows
-    windows = np.array_split(input_wave, len(periods))
+    windows = np.array_split(input_wave, len(tau_ins))
 
     # Process each window
     processed_signal = []
-    for window, period in zip(windows, periods):
+    for window, tau_in in zip(windows, tau_ins):
         # Zero-pad if the window is smaller than WINDOW_SIZE
 
         fp_window = [int(x * (2**10)) for x in window]
 
-        output_window = await process_window(dut, fp_window, period)
+        output_window = await process_window(dut, fp_window, tau_in)
         processed_signal.extend(output_window)
 
     # Save the processed audio

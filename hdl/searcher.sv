@@ -28,7 +28,7 @@ module searcher #(
     .RAM_DEPTH(BRAM_SIZE),                     
     .RAM_PERFORMANCE("HIGH_PERFORMANCE"),
     // .INIT_FILE(`FPATH(semitones.mem))
-    .INIT_FILE("/Users/aarushgupta/School/6205/proj/autotune/data/semitones.mem")
+    .INIT_FILE("/home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/data/semitones.mem")
     ) freqs_ram (
         .addra(curr_read_addr),
         .dina(0),
