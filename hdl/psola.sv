@@ -1,6 +1,7 @@
 `default_nettype none
 module psola #(
-    parameter int WINDOW_SIZE = 2048
+    parameter int WINDOW_SIZE  = 2048,
+    parameter int MAX_EXTENDED = 2200
 ) (
     input wire clk_in,
     input wire rst_in,
@@ -13,27 +14,27 @@ module psola #(
     output logic window_len_valid_out,
 
     // BRAM Handling
-    input wire [31:0] signal_val,  // from read_addr 2 cycles ago
+    input wire [15:0] signal_val,  // from read_addr 2 cycles ago
     // FRUTI: should there be a valid here?
     input wire [31:0] curr_processed_val, // from write_addr 2 cycles ago, already summed value at write location (which needs to be added to)
 
-    output logic [LOG_WINDOW_SIZE:0] read_addr,
-    output logic [LOG_WINDOW_SIZE:0] write_addr,
+    output logic [WINDOW_SIZE_BITS-1:0] read_addr,
+    output logic [MAX_EXTENDED_BITS-1:0] write_addr,
 
     output logic [31:0] write_val,  // for current_write_addr
-    output logic [LOG_WINDOW_SIZE:0] write_addr_piped,
+    output logic [MAX_EXTENDED_BITS-1:0] write_addr_piped,
     output logic valid_write
 );
-
-    localparam int LOG_WINDOW_SIZE = $clog2(WINDOW_SIZE);
+    localparam int WINDOW_SIZE_BITS = $clog2(WINDOW_SIZE);
+    localparam int MAX_EXTENDED_BITS = $clog2(MAX_EXTENDED);
     logic [1:0] phase;
 
     /// PHASE 1 LOGIC ////////
 
     logic [11:0] shifted_tau_in;
     logic [11:0] shifted_tau_in_temp;
-    logic [11:0] inv_tau_in;
-    logic [11:0] inv_tau_in_temp;
+    logic [10:0] inv_tau_in;
+    logic [10:0] inv_tau_in_temp;
 
     logic shifted_tau_in_found;
     logic inv_tau_in_found;
@@ -47,13 +48,13 @@ module psola #(
 
     //// Relevant variables ///////////////
 
-    logic [LOG_WINDOW_SIZE:0] i;
-    logic [LOG_WINDOW_SIZE:0] j;
-    logic [LOG_WINDOW_SIZE:0] offset;
+    logic [WINDOW_SIZE_BITS:0] i;
+    logic [WINDOW_SIZE_BITS:0] j;
+    logic [WINDOW_SIZE_BITS:0] offset;
 
-    logic [LOG_WINDOW_SIZE:0] i_piped;
-    logic [LOG_WINDOW_SIZE:0] j_piped;
-    logic [LOG_WINDOW_SIZE:0] offset_piped;
+    logic [WINDOW_SIZE_BITS:0] i_piped;
+    logic [WINDOW_SIZE_BITS:0] j_piped;
+    logic [WINDOW_SIZE_BITS:0] offset_piped;
 
     logic [31:0] window_func_val;
     logic [31:0] window_func_val_piped;
@@ -69,7 +70,7 @@ module psola #(
 
     pipeline #(
         .STAGES(2),
-        .WIDTH (LOG_WINDOW_SIZE + 1)
+        .WIDTH (WINDOW_SIZE_BITS + 1)
     ) pipeline_i (
         .clk (clk_in),
         .rst (rst_in),
@@ -79,7 +80,7 @@ module psola #(
 
     pipeline #(
         .STAGES(2),
-        .WIDTH (LOG_WINDOW_SIZE + 1)
+        .WIDTH (WINDOW_SIZE_BITS + 1)
     ) pipeline_j (
         .clk (clk_in),
         .rst (rst_in),
@@ -89,7 +90,7 @@ module psola #(
 
     pipeline #(
         .STAGES(2),
-        .WIDTH (LOG_WINDOW_SIZE + 1)
+        .WIDTH (WINDOW_SIZE_BITS + 1)
     ) pipeline_offset (
         .clk (clk_in),
         .rst (rst_in),
@@ -120,13 +121,13 @@ module psola #(
 
     ////////////// Division for inv_tau_in ///////////////
     fp_div #(
-        .WIDTH(20),
+        .WIDTH(21),
         .FRACTION_WIDTH(10),
         .NUM_STAGES(8)
     ) tau_in_div (
         .clk_in(clk_in),
         .rst_in(rst_in),
-        .dividend_in(1),
+        .dividend_in(11'h1),
         .divisor_in(tau_in),
         .valid_in(tau_valid_in),
         .quotient_out(inv_tau_in_temp),
@@ -141,18 +142,10 @@ module psola #(
         .clk_in(clk_in),
         .rst_in(rst_in),
         .start_search(tau_valid_in),
-        .search_val(tau_in),
+        .search_val({1'b0, tau_in}),
         .closest_value(shifted_tau_in_temp),
         .closest_value_found(search_valid_out)
     );
-    /////////////////////////////////////////////////////
-
-
-    ///////// Window function calculation ///////////////
-    // FRUTI: this might need to be sequential because of the mul
-    always_comb begin
-        
-    end
     /////////////////////////////////////////////////////
 
     always_ff @(posedge clk_in) begin

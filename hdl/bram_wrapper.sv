@@ -8,19 +8,21 @@ module bram_wrapper #(
 
     // YIN output
     input wire tau_valid_in,
-    input wire [11:0] tau_in,
+    input wire [10:0] tau_in,
 
     // gets next window of input while running psola on current
-    input wire signed [31:0] sample_in,
-    input wire [$clog2(WINDOW_SIZE) - 1:0] addr_in,
+    input wire [15:0] sample_in,
+    input wire [WINDOW_SIZE_BITS - 1:0] addr_in,
     input wire sample_valid_in,
 
-    output logic signed [31:0] out_val,
-    output logic [$clog2(MAX_EXTENDED) - 1:0] out_addr_piped,
+    output logic [31:0] out_val,
+    output logic [MAX_EXTENDED_BITS - 1:0] out_addr_piped,
     output logic valid_out_piped,
 
     output logic done
 );
+    localparam int WINDOW_SIZE_BITS = $clog2(WINDOW_SIZE);
+    localparam int MAX_EXTENDED_BITS = $clog2(MAX_EXTENDED);
 
     // determines which portion BRAM to write to, alternates
     // parity 0 indicates using first half for psola, writing to second half; vice versa
@@ -33,21 +35,21 @@ module bram_wrapper #(
     logic [1:0] phase;  // 0: psola, 1: output, 2: idle; reading happens in parallel
 
     // PSOLA module I/O registers
-    logic [31:0] psola_in_signal_val;
+    logic [15:0] psola_in_signal_val;
     logic [31:0] psola_in_curr_processed_val;
 
-    logic [$clog2(WINDOW_SIZE) - 1:0] psola_read_addr;
-    logic [$clog2(MAX_EXTENDED) - 1:0] psola_write_addr;
+    logic [WINDOW_SIZE_BITS - 1:0] psola_read_addr;
+    logic [MAX_EXTENDED_BITS - 1:0] psola_write_addr;
 
     logic [31:0] psola_write_val;
-    logic [31:0] psola_write_addr_piped;
+    logic [MAX_EXTENDED_BITS - 1:0] psola_write_addr_piped;
     logic psola_valid_write;
 
-    logic [$clog2(MAX_EXTENDED)-1:0] psola_output_window_len;
+    logic [MAX_EXTENDED_BITS-1:0] psola_output_window_len;
 
     // BRAM output registers
 
-    logic [$clog2(MAX_EXTENDED) - 1:0] out_addr;
+    logic [MAX_EXTENDED_BITS - 1:0] out_addr;
     logic valid_out;
 
     // Pipelined output registers
@@ -87,12 +89,12 @@ module bram_wrapper #(
         .clka(clk_in),
         .wea(phase == 1),
         .web(psola_valid_write),
-        .ena(1),
-        .enb(1),
+        .ena(1'b1),
+        .enb(1'b1),
         .rsta(rst_in),
         .rstb(rst_in),
-        .regcea(1),
-        .regceb(1),
+        .regcea(1'b1),
+        .regceb(1'b1),
         .douta(out_val),
         .doutb()
     );
@@ -100,7 +102,8 @@ module bram_wrapper #(
     assign psola_in_curr_processed_val = out_val;
 
     psola #(
-        .WINDOW_SIZE(WINDOW_SIZE)
+        .WINDOW_SIZE (WINDOW_SIZE),
+        .MAX_EXTENDED(MAX_EXTENDED)
     ) psola_inst (
         .clk_in(clk_in),
         .rst_in(rst_in),
@@ -124,23 +127,23 @@ module bram_wrapper #(
     // BRAM storing signal values for current and next window
     // PORT A used for getting next window of input, PORT B used to read curr window into PSOLA
     xilinx_true_dual_port_read_first_1_clock_ram #(
-        .RAM_WIDTH(32),
+        .RAM_WIDTH(16),
         .RAM_DEPTH(2 * WINDOW_SIZE),
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) signal_bram (
         .addra(window_parity ? addr_in + WINDOW_SIZE : addr_in),
         .addrb(window_parity ? psola_read_addr : psola_read_addr + WINDOW_SIZE),
         .dina(sample_in),
-        .dinb(0),
+        .dinb('0),
         .clka(clk_in),
         .wea(sample_valid_in),
-        .web(0),
-        .ena(1),
-        .enb(1),
+        .web(1'b0),
+        .ena(1'b1),
+        .enb(1'b1),
         .rsta(rst_in),
         .rstb(rst_in),
-        .regcea(1),
-        .regceb(1),
+        .regcea(1'b1),
+        .regceb(1'b1),
         .douta(),
         .doutb(psola_in_signal_val)
     );

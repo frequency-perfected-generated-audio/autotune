@@ -161,11 +161,11 @@ module top_level (
         .rst_in(sys_rst),
 
         // YIN output
-        .tau_in({1'b0, taumin}),
+        .tau_in(taumin),
         .tau_valid_in(taumin_valid),
 
         // gets next window of input while running psola on current
-        .sample_in({6'b0, processed_sample, 10'b0}),
+        .sample_in(processed_sample),
         .addr_in(processed_sample_number),
         .sample_valid_in(processed_sample_valid),
 
@@ -183,12 +183,23 @@ module top_level (
         psola_valid <= raw_psola_valid;
     end
 
+    logic [15:0] psola_processed;
+    always_ff @(posedge clk_100mhz) begin
+        case (sw[7:0])
+            8'b00000001: psola_processed <= psola[31-:16];
+            8'b00000010: psola_processed <= psola[30-:16];
+            8'b00000100: psola_processed <= psola[29-:16];
+            8'b00001000: psola_processed <= psola[28-:16];
+            default: psola_processed <= psola[31-:16];
+        endcase
+    end
+
     logic spk_out;
     pdm #(
         .NBITS(16)
     ) audio_generator (
         .clk_in(clk_100mhz),
-        .d_in  (psola[31:16]),
+        .d_in  (psola_processed),
         .rst_in(sys_rst),
         .d_out (spk_out)
     );

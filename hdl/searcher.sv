@@ -30,12 +30,12 @@ module searcher #(
         .INIT_FILE(`FPATH(semitones.mem))
     ) freqs_ram (
         .addra(curr_read_addr),
-        .dina(0),
+        .dina('0),
         .clka(clk_in),
-        .wea(0),
-        .ena(1),
+        .wea(1'b0),
+        .ena(1'b1),
         .rsta(rst_in),
-        .regcea(1),
+        .regcea(1'b1),
         .douta(val_from_bram)
     );
 
