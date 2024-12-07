@@ -5,8 +5,8 @@
 `endif  /* ! SYNTHESIS */
 
 module searcher #(
-    parameter WIDTH = 12,
-    parameter BRAM_SIZE = 64
+    parameter int WIDTH = 12,
+    parameter int BRAM_SIZE = 64
 ) (
     input logic clk_in,
     input logic rst_in,
@@ -42,7 +42,6 @@ module searcher #(
 
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
-
             cycle_parity <= 0;
 
             curr_read_addr <= 0;
@@ -52,9 +51,7 @@ module searcher #(
 
             closest_value <= 0;
             closest_value_found <= 0;
-
         end else if (start_search) begin
-
             searching <= 1;
             cycle_parity <= 0;
             curr_read_addr <= 0;
@@ -62,11 +59,8 @@ module searcher #(
 
             closest_value <= 0;
             closest_value_found <= 0;
-
         end else if (!cycle_parity) begin
-
             if (closest_value_found) begin
-
                 // RESET SEARCH
                 curr_read_addr <= 0;
                 prev_diff <= {WIDTH{1'b1}};
@@ -74,11 +68,8 @@ module searcher #(
                 closest_value <= 0;
                 closest_value_found <= 0;
                 searching <= 0;
-
             end else if (searching) begin
-
                 if (val_from_bram >= search_val) begin
-
                     if (prev_diff > val_from_bram - search_val) begin
                         closest_value <= val_from_bram;
                     end else begin
@@ -86,19 +77,13 @@ module searcher #(
                     end
 
                     closest_value_found <= 1;
-
                 end else if (curr_read_addr == BRAM_SIZE) begin
-
                     closest_value <= val_from_bram;
                     closest_value_found <= 1;
-
                 end else begin
-
                     prev_diff <= search_val - val_from_bram;
                     curr_read_addr <= curr_read_addr + 1;
-
                 end
-
             end
 
             cycle_parity <= 1;
@@ -107,5 +92,4 @@ module searcher #(
             cycle_parity <= 0;
         end
     end
-
 endmodule

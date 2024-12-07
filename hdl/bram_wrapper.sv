@@ -1,7 +1,7 @@
 `default_nettype none
 module bram_wrapper #(
-    parameter WINDOW_SIZE  = 2048,
-    parameter MAX_EXTENDED = 2200
+    parameter int WINDOW_SIZE  = 2048,
+    parameter int MAX_EXTENDED = 2200
 ) (
     input logic clk_in,
     input logic rst_in,
@@ -147,9 +147,7 @@ module bram_wrapper #(
 
 
     always_ff @(posedge clk_in) begin
-
         if (rst_in) begin
-
             window_parity <= 0;
 
             phase <= 0;
@@ -159,9 +157,7 @@ module bram_wrapper #(
 
             valid_out <= 0;
             out_addr <= 0;
-
         end else if (tau_valid_in) begin
-
             window_parity <= ~window_parity;
             phase <= 0;
             read_done <= 0;
@@ -169,23 +165,17 @@ module bram_wrapper #(
 
             valid_out <= 0;
             out_addr <= 0;
-
         end else if (output_done && read_done) begin
-
             phase <= 0;
             done <= 1;
 
             valid_out <= 0;
             out_addr <= 0;
-
         end else if (phase == 0) begin
-
             if (psola_done) begin
                 phase <= 1;
             end
-
         end else if (phase == 1) begin
-
             if (out_addr_piped == psola_output_window_len - 1) begin
                 output_done <= 1;
                 valid_out   <= 0;
@@ -195,16 +185,10 @@ module bram_wrapper #(
             end else begin
                 valid_out <= 0;
             end
-
-
         end
 
         if (addr_in == WINDOW_SIZE - 1 && sample_valid_in) begin
             read_done <= 1;
         end
-
-
-
     end
-
 endmodule
