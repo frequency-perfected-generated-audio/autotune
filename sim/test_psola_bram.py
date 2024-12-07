@@ -28,7 +28,7 @@ async def reset(dut, cycles=2):
 async def process_window(dut, next_window, tau_in):
     """Process a single window of audio through the PSOLA module."""
     await FallingEdge(dut.clk_in)
-    dut.tau_in.value = 50  # tau_in
+    dut.tau_in.value = tau_in
     dut.tau_valid_in.value = 1
     await FallingEdge(dut.clk_in)
     dut.tau_valid_in.value = 0
@@ -46,7 +46,7 @@ async def process_window(dut, next_window, tau_in):
             dut.sample_valid_in.value = 0
 
         if dut.valid_out_piped.value.integer == 1:
-            out.append(dut.out_val.value.signed_integer / (2**20))
+            out.append(dut.out_val.value.signed_integer)
 
         await ClockCycles(dut.clk_in, 1)
         cycle += 1
@@ -56,7 +56,9 @@ async def process_window(dut, next_window, tau_in):
     # window_len_out = dut.window_len_out.value.integer
     # dut._log.info(f"PSOLA produced window of length {window_len_out}")
 
-    return out
+    print("MAXIMUM and MINIMUM:", max(out) / (2**20), min(out) / (2**20))
+
+    return [x / (2**20) for x in out]
 
 
 @cocotb.test()
@@ -98,7 +100,7 @@ async def test_psola(dut):
         processed_signal.extend(output_window)
 
     # Save the processed audio
-    processed_signal = np.array(processed_signal, dtype=np.int32)
+    processed_signal = np.array(processed_signal)
     sf.write("cocotb_psola_bram_output.wav", processed_signal, SAMPLE_RATE)
 
     # Plot the original signal

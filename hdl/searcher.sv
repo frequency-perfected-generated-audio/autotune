@@ -1,7 +1,7 @@
 `ifdef SYNTHESIS
 `define FPATH(X) `"X`"
 `else  /* ! SYNTHESIS */
-`define FPATH(X) `"../../data/X`"
+`define FPATH(X) `"../data/X`"
 `endif  /* ! SYNTHESIS */
 
 module searcher #(
@@ -27,8 +27,7 @@ module searcher #(
         .RAM_WIDTH(WIDTH),
         .RAM_DEPTH(BRAM_SIZE),
         .RAM_PERFORMANCE("HIGH_PERFORMANCE"),
-        // .INIT_FILE(`FPATH(semitones.mem))
-        .INIT_FILE("/home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/data/semitones.mem")
+        .INIT_FILE(`FPATH(semitones.mem))
     ) freqs_ram (
         .addra(curr_read_addr),
         .dina(0),
