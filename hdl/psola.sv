@@ -124,7 +124,7 @@ module psola #(
 
     ////////////// Division for inv_tau_in ///////////////
     fp_div #(
-        .WIDTH(21),
+        .WIDTH(32),
         .FRACTION_WIDTH(FRACTION_BITS),
         .NUM_STAGES(8)
     ) tau_in_div (

@@ -11,9 +11,11 @@ from cocotb.clock import Clock
 from cocotb.runner import get_runner
 from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 from matplotlib import pyplot as plt
+from scipy.io import wavfile
 
 WINDOW_SIZE = 2048  # Change if your module uses a different size
 SAMPLE_RATE = 44100
+FRACTION_BITS = 11
 
 
 # Helper Functions
@@ -46,7 +48,10 @@ async def process_window(dut, next_window, tau_in):
             dut.sample_valid_in.value = 0
 
         if dut.valid_out_piped.value.integer == 1:
-            out.append(dut.out_val.value.signed_integer)
+            if dut.out_val.value.integer >= 2**27:
+                dut._log.info(f"VALUE: {dut.out_val.value.integer}")
+                raise ValueError(f"out val too high on sample {len(out)}")
+            out.append(dut.out_val.value.integer)
 
         await ClockCycles(dut.clk_in, 1)
         cycle += 1
@@ -56,7 +61,7 @@ async def process_window(dut, next_window, tau_in):
     # window_len_out = dut.window_len_out.value.integer
     # dut._log.info(f"PSOLA produced window of length {window_len_out}")
 
-    return [x / (2**20) for x in out]
+    return [x / (2**FRACTION_BITS) for x in out]
 
 
 @cocotb.test()
@@ -76,7 +81,10 @@ async def test_psola(dut):
     tau_inS_PATH = BASE_PATH / "test_data" / "slide-windows.txt"
 
     # Load the audio file and tau_ins from YIN
-    input_wave, _ = librosa.load(AUDIO_PATH, sr=SAMPLE_RATE)
+    # input_wave, _ = librosa.load(AUDIO_PATH, sr=SAMPLE_RATE)
+    _, input_wave = wavfile.read(AUDIO_PATH)
+    input_wave = input_wave.view(dtype=np.uint16) ^ 0x8000
+
     with open(tau_inS_PATH, "r") as file:
         tau_ins = [int(SAMPLE_RATE / float(line.strip())) for line in file]
 
@@ -89,16 +97,17 @@ async def test_psola(dut):
 
     # Process each window
     processed_signal = []
-    for window, tau_in in zip(windows, tau_ins):
+    for i, (window, tau_in) in enumerate(zip(windows, tau_ins)):
         # Zero-pad if the window is smaller than WINDOW_SIZE
 
-        fp_window = [int(x * (2**10)) for x in window]
+        fp_window = [int(x) for x in window]
 
+        dut._log.info(f"Window {i}:")
         output_window = await process_window(dut, fp_window, tau_in)
         processed_signal.extend(output_window)
 
     # Save the processed audio
-    processed_signal = np.array(processed_signal)
+    processed_signal = np.array(processed_signal) - 32768
     sf.write("cocotb_psola_bram_output.wav", processed_signal, SAMPLE_RATE)
 
     # Plot the original signal
