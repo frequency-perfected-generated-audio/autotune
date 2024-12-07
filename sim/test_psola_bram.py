@@ -56,8 +56,6 @@ async def process_window(dut, next_window, tau_in):
     # window_len_out = dut.window_len_out.value.integer
     # dut._log.info(f"PSOLA produced window of length {window_len_out}")
 
-    print("MAXIMUM and MINIMUM:", max(out) / (2**20), min(out) / (2**20))
-
     return [x / (2**20) for x in out]
 
 

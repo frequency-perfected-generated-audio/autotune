@@ -56,6 +56,7 @@ module psola #(
     logic [LOG_WINDOW_SIZE:0] offset_piped;
 
     logic [31:0] window_func_val;
+    logic [31:0] window_func_val_piped;
 
     assign read_addr  = i + offset;
     assign write_addr = j + offset;
@@ -106,8 +107,15 @@ module psola #(
         .dout(valid_read_piped)
     );
 
-
-    /////////////////////////////////
+    pipeline #(
+        .STAGES(1),
+        .WIDTH (32)
+    ) pipeline_window_func (
+        .clk (clk_in),
+        .rst (rst_in),
+        .din (window_func_val),
+        .dout(window_func_val_piped)
+    );
 
 
     ////////////// Division for inv_tau_in ///////////////
@@ -143,12 +151,7 @@ module psola #(
     ///////// Window function calculation ///////////////
     // FRUTI: this might need to be sequential because of the mul
     always_comb begin
-        if (offset < tau_in) begin
-            window_func_val = offset_piped * inv_tau_in;
-        end else begin
-            // FRUTI: should this be 1 << 10?
-            window_func_val = (2 << 10) - offset_piped * inv_tau_in;
-        end
+        
     end
     /////////////////////////////////////////////////////
 
@@ -229,7 +232,7 @@ module psola #(
                     write_val <= $signed($signed(signal_val) << 10);
                 end else if (valid_read_piped) begin
                     write_val <= $signed(curr_processed_val) +
-                        $signed(signal_val) * window_func_val;
+                        $signed(signal_val) * window_func_val_piped;
                 end
 
                 write_addr_piped <= j_piped + offset_piped;
@@ -242,6 +245,12 @@ module psola #(
                 valid_write <= 0;
             end
             phase <= 0;
+        end
+
+        if (offset < tau_in) begin
+            window_func_val <= offset * inv_tau_in;
+        end else begin
+            window_func_val <= (2 << 10) - offset * inv_tau_in;
         end
     end
 endmodule
