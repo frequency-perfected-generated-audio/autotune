@@ -15,13 +15,14 @@ module psola #(
 
     // BRAM Handling
     input wire [15:0] signal_val,  // from read_addr 2 cycles ago
-    // FRUTI: should there be a valid here?
-    input wire [31:0] curr_processed_val, // from write_addr 2 cycles ago, already summed value at write location (which needs to be added to)
+    // from write_addr 2 cycles ago, already summed value at write location (which needs to be added to)
+    // 22 whole bits, 10 fractional bits
+    input wire [31:0] curr_processed_val,
 
-    output logic [WINDOW_SIZE_BITS-1:0] read_addr,
+    output logic [ WINDOW_SIZE_BITS-1:0] read_addr,
     output logic [MAX_EXTENDED_BITS-1:0] write_addr,
 
-    output logic [31:0] write_val,  // for current_write_addr
+    output logic [31:0] write_val,  // for current_write_addr, 22 whole bits, 10 fractional bits
     output logic [MAX_EXTENDED_BITS-1:0] write_addr_piped,
     output logic valid_write
 );
@@ -33,7 +34,7 @@ module psola #(
 
     logic [11:0] shifted_tau_in;
     logic [11:0] shifted_tau_in_temp;
-    logic [10:0] inv_tau_in;
+    logic [10:0] inv_tau_in;  // 1 whole bit, 10 fractional bits
     logic [10:0] inv_tau_in_temp;
 
     logic shifted_tau_in_found;
@@ -56,8 +57,8 @@ module psola #(
     logic [WINDOW_SIZE_BITS:0] j_piped;
     logic [WINDOW_SIZE_BITS:0] offset_piped;
 
-    logic [31:0] window_func_val;
-    logic [31:0] window_func_val_piped;
+    logic [12:0] window_func_val;  // 3 whole bits, 10 fractional bits
+    logic [12:0] window_func_val_piped;
 
     assign read_addr  = i + offset;
     assign write_addr = j + offset;
@@ -110,7 +111,7 @@ module psola #(
 
     pipeline #(
         .STAGES(1),
-        .WIDTH (32)
+        .WIDTH (11)
     ) pipeline_window_func (
         .clk (clk_in),
         .rst (rst_in),
@@ -219,13 +220,9 @@ module psola #(
                 end
 
                 if (i_piped + offset_piped < tau_in && valid_read_piped) begin
-                    // FRUTI: are we multiplying by 2**10 because that's the
-                    // max window value and we're just leaving the signal
-                    // unchanged for the first half of the first pitch period?
-                    write_val <= $signed($signed(signal_val) << 10);
+                    write_val <= signal_val << 10;
                 end else if (valid_read_piped) begin
-                    write_val <= $signed(curr_processed_val) +
-                        $signed(signal_val) * window_func_val_piped;
+                    write_val <= curr_processed_val + (signal_val * window_func_val_piped);
                 end
 
                 write_addr_piped <= j_piped + offset_piped;
