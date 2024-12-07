@@ -2,20 +2,20 @@
 module psola #(
     parameter int WINDOW_SIZE = 2048
 ) (
-    input logic clk_in,
-    input logic rst_in,
+    input wire clk_in,
+    input wire rst_in,
 
     // Actual audio processing
-    input logic tau_valid_in,
-    input logic [10:0] tau_in,
+    input wire tau_valid_in,
+    input wire [10:0] tau_in,
 
     output logic [11:0] window_len_out,
     output logic window_len_valid_out,
 
     // BRAM Handling
-    input logic [31:0] signal_val,  // from read_addr 2 cycles ago
+    input wire [31:0] signal_val,  // from read_addr 2 cycles ago
     // FRUTI: should there be a valid here?
-    input logic [31:0] curr_processed_val, // from write_addr 2 cycles ago, already summed value at write location (which needs to be added to)
+    input wire [31:0] curr_processed_val, // from write_addr 2 cycles ago, already summed value at write location (which needs to be added to)
 
     output logic [LOG_WINDOW_SIZE:0] read_addr,
     output logic [LOG_WINDOW_SIZE:0] write_addr,

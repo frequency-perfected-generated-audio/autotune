@@ -17,14 +17,14 @@ typedef enum {
 module psola_rewrite #(
     parameter int WINDOW_SIZE = 2048
 ) (
-    input logic clk_in,
-    input logic rst_in,
+    input wire clk_in,
+    input wire rst_in,
 
-    input logic [10:0] tau_in,
-    input logic tau_valid_in,
+    input wire [10:0] tau_in,
+    input wire tau_valid_in,
 
-    input logic [15:0] sample_in,
-    input logic sample_valid_in,
+    input wire [15:0] sample_in,
+    input wire sample_valid_in,
 
     output logic [15:0] autotuned_out,
     output logic autotuned_valid_out
@@ -171,7 +171,7 @@ module psola_rewrite #(
                                     //window_coeff <= window_coeff - (tau_inv << 1);
                                     window_coeff <= (1 << 11) - ((offset * tau_inv) << 1);
                                 end
-                                phase <= READ1;
+                                psola_phase <= READ1;
                                 // So that next cycle, i + tau < WINDOW_SIZE
                             end else if (i + (tau << 1) < WINDOW_SIZE) begin
                                 i <= i + tau;
@@ -179,7 +179,7 @@ module psola_rewrite #(
                                 j <= j + shifted_tau;
                                 offset <= '0;
                                 window_coeff <= '0;
-                                phase <= READ1;
+                                psola_phase <= READ1;
                             end else begin
                                 phase <= WAITING;
                                 tau_inv_done <= 0;

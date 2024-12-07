@@ -3,17 +3,17 @@ module bram_wrapper #(
     parameter int WINDOW_SIZE  = 2048,
     parameter int MAX_EXTENDED = 2200
 ) (
-    input logic clk_in,
-    input logic rst_in,
+    input wire clk_in,
+    input wire rst_in,
 
     // YIN output
-    input logic tau_valid_in,
-    input logic [11:0] tau_in,
+    input wire tau_valid_in,
+    input wire [11:0] tau_in,
 
     // gets next window of input while running psola on current
-    input logic signed [31:0] sample_in,
-    input logic [$clog2(WINDOW_SIZE) - 1:0] addr_in,
-    input logic sample_valid_in,
+    input wire signed [31:0] sample_in,
+    input wire [$clog2(WINDOW_SIZE) - 1:0] addr_in,
+    input wire sample_valid_in,
 
     output logic signed [31:0] out_val,
     output logic [$clog2(MAX_EXTENDED) - 1:0] out_addr_piped,

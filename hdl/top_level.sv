@@ -27,15 +27,14 @@ module top_level (
 
     // RGB Signals
     output logic [2:0] rgb0,
-    output logic [2:0] rgb1,
+    output logic [2:0] rgb1
 
-    input logic signed [31:0] dummy_sample,
-    input logic [9:0] dummy_addr,
-
-    input logic [10:0] output_addr,
-
-    output logic signed [31:0] out_sample
-
+    // input logic signed [31:0] dummy_sample,
+    // input logic [9:0] dummy_addr,
+    //
+    // input logic [10:0] output_addr,
+    //
+    // output logic signed [31:0] out_sample
 );
 
     logic sys_rst;
@@ -70,28 +69,24 @@ module top_level (
 
     logic [15:0] processed_sample;
     logic        processed_sample_valid;
+    logic [10:0] processed_sample_number;
     always_ff @(posedge clk_100mhz) begin
-        if (sample_valid) begin
+        if (sys_rst) begin
+            processed_sample_number <= 0;
+        end else if (sample_valid) begin
             processed_sample <= sample[23:8];
+            // TODO: this might be an off by one
+            if (processed_sample_number == 2048 - 1) begin
+                processed_sample_number <= 0;
+            end else begin
+                processed_sample_number <= processed_sample_number + 1;
+            end
         end
         processed_sample_valid <= sample_valid;
     end
 
     // Make LEDs show audio samples
     assign led = processed_sample;
-
-    logic spk_out;
-
-    pdm #(
-        .NBITS(16)
-    ) audio_generator (
-        .clk_in(clk_100mhz),
-        .d_in  (processed_sample),
-        .rst_in(sys_rst),
-        .d_out (spk_out)
-    );
-    assign spkl = spk_out;
-    assign spkr = spk_out;
 
     logic [10:0] raw_taumin;
     logic raw_taumin_valid;
@@ -129,10 +124,12 @@ module top_level (
     );
 
     logic [10:0] taumin;
+    logic taumin_valid;
     always_ff @(posedge clk_100mhz) begin
         if (raw_taumin_valid) begin
             taumin <= raw_taumin;
         end
+        taumin_valid <= raw_taumin_valid;
     end
 
     // Show taumin on seven segment display
@@ -152,32 +149,51 @@ module top_level (
     assign rgb0  = '0;
     assign rgb1  = '0;
 
-    (* ram_style = "block" *) logic signed [31:0] dummy_data [2047:0];
-    (* ram_style = "block" *) logic signed [31:0] out_dummy_data [4095:0];
-
-    logic signed [31:0] out_piped;
-    logic signed [31:0] dummy_sample_piped;
-    
-
-    always_ff @(posedge clk_100mhz) begin
-        dummy_data[dummy_addr] <= dummy_sample_piped;
-        dummy_sample_piped <= dummy_sample;
-        out_piped <= out_dummy_data[output_addr];
-        out_sample <= out_piped;
-    end
-
-    psola_no_bram #(
-        .WINDOW_SIZE(2048)
-    ) psola (
+    logic [31:0] psola;
+    logic [31:0] raw_psola;
+    logic        psola_valid;
+    logic        raw_psola_valid;
+    bram_wrapper #(
+        .WINDOW_SIZE (2048),
+        .MAX_EXTENDED(2200)
+    ) psola_gen (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
-        .new_signal(processed_sample_valid),
-        .signal(dummy_data),
-        .period(taumin),
-        .out(out_dummy_data),
-        .output_window_len(),
-        .done(rgb1)
+
+        // YIN output
+        .tau_in({1'b0, taumin}),
+        .tau_valid_in(taumin_valid),
+
+        // gets next window of input while running psola on current
+        .sample_in({6'b0, processed_sample, 10'b0}),
+        .addr_in(processed_sample_number),
+        .sample_valid_in(processed_sample_valid),
+
+        .out_val(raw_psola),
+        .out_addr_piped(),
+        .valid_out_piped(raw_psola_valid),
+
+        .done()
     );
+
+    always_ff @(posedge clk_100mhz) begin
+        if (raw_psola_valid) begin
+            psola <= raw_psola;
+        end
+        psola_valid <= raw_psola_valid;
+    end
+
+    logic spk_out;
+    pdm #(
+        .NBITS(16)
+    ) audio_generator (
+        .clk_in(clk_100mhz),
+        .d_in  (psola[31:16]),
+        .rst_in(sys_rst),
+        .d_out (spk_out)
+    );
+    assign spkl = spk_out;
+    assign spkr = spk_out;
 
 endmodule
 

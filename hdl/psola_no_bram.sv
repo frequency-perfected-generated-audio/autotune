@@ -1,10 +1,10 @@
 `default_nettype none
 module psola_no_bram #(parameter WINDOW_SIZE = 2048) (
-    input logic clk_in,
-    input logic rst_in,
-    input logic new_signal,
-    input logic signed [31:0] signal [WINDOW_SIZE-1:0],
-    input logic [11:0] period,
+    input wire clk_in,
+    input wire rst_in,
+    input wire new_signal,
+    input wire signed [31:0] signal [WINDOW_SIZE-1:0],
+    input wire [11:0] period,
     output logic signed [31:0] out [2*WINDOW_SIZE-1:0],
     output logic [11:0] output_window_len,
     output logic done
