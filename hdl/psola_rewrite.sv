@@ -110,7 +110,7 @@ module psola_rewrite #(
                 sample_count  <= 0;
                 window_toggle <= ~window_toggle;
             end else begin
-                sample_count <= sample_count - 1;
+                sample_count <= sample_count + 1;
             end
 
             if (sample_valid_in) begin
