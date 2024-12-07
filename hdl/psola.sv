@@ -1,7 +1,8 @@
 `default_nettype none
 module psola #(
-    parameter int WINDOW_SIZE  = 2048,
-    parameter int MAX_EXTENDED = 2200
+    parameter int WINDOW_SIZE   = 2048,
+    parameter int MAX_EXTENDED  = 2200,
+    parameter int FRACTION_BITS = 11
 ) (
     input wire clk_in,
     input wire rst_in,
@@ -28,14 +29,15 @@ module psola #(
 );
     localparam int WINDOW_SIZE_BITS = $clog2(WINDOW_SIZE);
     localparam int MAX_EXTENDED_BITS = $clog2(MAX_EXTENDED);
+    localparam int WINDOW_FN_BITS = FRACTION_BITS + 3;
     logic [1:0] phase;
 
     /// PHASE 1 LOGIC ////////
 
     logic [11:0] shifted_tau_in;
     logic [11:0] shifted_tau_in_temp;
-    logic [10:0] inv_tau_in;  // 1 whole bit, 10 fractional bits
-    logic [10:0] inv_tau_in_temp;
+    logic [FRACTION_BITS:0] inv_tau_in;  // 1 whole bit, 10 fractional bits
+    logic [FRACTION_BITS:0] inv_tau_in_temp;
 
     logic shifted_tau_in_found;
     logic inv_tau_in_found;
@@ -57,8 +59,8 @@ module psola #(
     logic [WINDOW_SIZE_BITS:0] j_piped;
     logic [WINDOW_SIZE_BITS:0] offset_piped;
 
-    logic [12:0] window_func_val;  // 3 whole bits, 10 fractional bits
-    logic [12:0] window_func_val_piped;
+    logic [WINDOW_FN_BITS:0] window_func_val;  // 3 whole bits, 10 fractional bits
+    logic [WINDOW_FN_BITS:0] window_func_val_piped;
 
     assign read_addr  = i + offset;
     assign write_addr = j + offset;
@@ -111,7 +113,7 @@ module psola #(
 
     pipeline #(
         .STAGES(1),
-        .WIDTH (11)
+        .WIDTH (WINDOW_FN_BITS)
     ) pipeline_window_func (
         .clk (clk_in),
         .rst (rst_in),
@@ -123,7 +125,7 @@ module psola #(
     ////////////// Division for inv_tau_in ///////////////
     fp_div #(
         .WIDTH(21),
-        .FRACTION_WIDTH(10),
+        .FRACTION_WIDTH(FRACTION_BITS),
         .NUM_STAGES(8)
     ) tau_in_div (
         .clk_in(clk_in),
@@ -220,7 +222,7 @@ module psola #(
                 end
 
                 if (i_piped + offset_piped < tau_in && valid_read_piped) begin
-                    write_val <= signal_val << 10;
+                    write_val <= signal_val << FRACTION_BITS;
                 end else if (valid_read_piped) begin
                     write_val <= curr_processed_val + (signal_val * window_func_val_piped);
                 end
@@ -240,7 +242,7 @@ module psola #(
         if (offset < tau_in) begin
             window_func_val <= offset * inv_tau_in;
         end else begin
-            window_func_val <= (2 << 10) - offset * inv_tau_in;
+            window_func_val <= (2 << FRACTION_BITS) - offset * inv_tau_in;
         end
     end
 endmodule
