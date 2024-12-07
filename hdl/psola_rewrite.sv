@@ -40,7 +40,7 @@ module psola_rewrite #(
     // DIVIDING
     logic [10:0] tau;
     logic [31:0] tau_inv;
-    logic [31:0] tau_inv_raw;
+    logic [10:0] tau_inv_raw;
     logic tau_inv_valid;
     logic tau_inv_done;
 
@@ -51,8 +51,8 @@ module psola_rewrite #(
     ) tau_in_div (
         .clk_in(clk_in),
         .rst_in(rst_in),
-        .dividend_in(1),
-        .divisor_in(tau_in),
+        .dividend_in(22'h1),
+        .divisor_in({11'b0, tau_in}),
         .valid_in(tau_valid_in),
         .quotient_out(tau_inv_raw),
         .valid_out(tau_inv_valid),
@@ -91,8 +91,8 @@ module psola_rewrite #(
     logic [31:0] data_j_in;
 
     // OUTPUT VALID
-    logic [1:0] sample_valid_pipe;
-    assign autotune_valid_out = sample_valid_pipe[1];
+    logic [ 1:0] sample_valid_pipe;
+    assign autotuned_valid_out = sample_valid_pipe[1];
 
     logic [$clog2(WINDOW_SIZE):0] autotuned_out_addr;
 
@@ -102,9 +102,9 @@ module psola_rewrite #(
             window_toggle <= 0;
             sample_count <= '0;
             tau_inv_done <= 0;
-            closest_semitone_done <= 0;
-            autotuned_addr <= '0;
-            sample_in_pipe <= '0;
+            shifted_tau_done <= 0;
+            autotuned_out_addr <= '0;
+            sample_valid_pipe <= '0;
         end else begin
             if (sample_count == WINDOW_SIZE - 1) begin
                 sample_count  <= 0;
@@ -114,7 +114,7 @@ module psola_rewrite #(
             end
 
             if (sample_valid_in) begin
-                autotuned_addr <= autotuned_addr + 1;
+                autotuned_out_addr <= autotuned_out_addr + 1;
             end
             sample_valid_pipe <= {sample_valid_pipe, sample_valid_in};
 
@@ -127,7 +127,7 @@ module psola_rewrite #(
                 end
                 DIVIDING: begin
                     if (tau_inv_valid) begin
-                        tau_inv <= tau_inv_raw;
+                        tau_inv <= {21'b0, tau_inv_raw};
                         tau_inv_done <= 1;
                     end
                     if (shifted_tau_valid) begin
@@ -158,7 +158,7 @@ module psola_rewrite #(
                             psola_phase <= VALUE_CALC2;
                         end
                         VALUE_CALC2: begin
-                            data_j_in <= data_i_windowed + data_j_out_delay;
+                            data_j_in   <= data_i_windowed + data_j_out_delay;
                             psola_phase <= VALUE_CALC2;
                         end
                         WRITE: begin
@@ -169,13 +169,13 @@ module psola_rewrite #(
                                     window_coeff <= (offset * tau_inv) << 1;
                                 end else begin
                                     //window_coeff <= window_coeff - (tau_inv << 1);
-                                    window_coeff <= (1<<11) - ((offset * tau_inv) << 1);
+                                    window_coeff <= (1 << 11) - ((offset * tau_inv) << 1);
                                 end
                                 phase <= READ1;
-                            // So that next cycle, i + tau < WINDOW_SIZE
+                                // So that next cycle, i + tau < WINDOW_SIZE
                             end else if (i + (tau << 1) < WINDOW_SIZE) begin
                                 i <= i + tau;
-                                max_offset <= ((tau << 1) + (i + tau) < WINDOW_SIZE ? tau << 1 : WINDOW_SIZE - i - tau;
+                                max_offset <= ((tau << 1) + (i + tau) < WINDOW_SIZE) ? tau << 1 : WINDOW_SIZE - i - tau;
                                 j <= j + shifted_tau;
                                 offset <= '0;
                                 window_coeff <= '0;
@@ -183,7 +183,7 @@ module psola_rewrite #(
                             end else begin
                                 phase <= WAITING;
                                 tau_inv_done <= 0;
-                                closest_semitone_done <= 0;
+                                shifted_tau_done <= 0;
                             end
                         end
                     endcase
@@ -200,8 +200,8 @@ module psola_rewrite #(
     ) psola_bram (
         // A read port, B write port
         .addra(sample_out_addr + (window_toggle ? WINDOW_SIZE : 0)),
-        .dina(data_j_in),
-        .wea(psola_phase == WRITE),
+        .dina (data_j_in),
+        .wea  (psola_phase == WRITE),
         .douta(data_j_out),
 
         .addrb(autotuned_out_addr + (window_toggle ? 0 : WINDOW_SIZE)),
@@ -209,12 +209,12 @@ module psola_rewrite #(
         .dinb(),
         .clka(clk_in),
         .web(),
-        .ena(0),
-        .enb(1),
+        .ena(1'b0),
+        .enb(1'b1),
         .rsta(rst_in),
         .rstb(rst_in),
-        .regcea(1),
-        .regceb(1),
+        .regcea(1'b1),
+        .regceb(1'b1)
     );
 
     xilinx_true_dual_port_read_first_1_clock_ram #(
@@ -227,18 +227,18 @@ module psola_rewrite #(
         .douta(data_i),
 
         .addrb(sample_count + (window_toggle ? WINDOW_SIZE : 0)),
-        .dinb(sample_in),
-        .web(sample_valid_in),
+        .dinb (sample_in),
+        .web  (sample_valid_in),
 
         .dina(),
         .clka(clk_in),
-        .wea(0),
-        .ena(0),
-        .enb(1),
+        .wea(1'b0),
+        .ena(1'b0),
+        .enb(1'b1),
         .rsta(rst_in),
         .rstb(rst_in),
-        .regcea(1),
-        .regceb(1),
+        .regcea(1'b1),
+        .regceb(1'b1),
         .doutb()
     );
 
