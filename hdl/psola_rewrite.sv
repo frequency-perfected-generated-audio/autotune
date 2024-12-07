@@ -7,11 +7,11 @@ typedef enum {
 } phase_e;
 
 typedef enum {
-    GET_J1,
-    GET_J2,
-    GET_I1,
-    GET_I2,
-    WRITE_J
+    READ1,
+    READ2,
+    VALUE_CALC1,
+    VALUE_CALC2,
+    WRITE
 } psola_phase_e;
 
 module psola_rewrite #(
@@ -30,6 +30,7 @@ module psola_rewrite #(
     output logic autotuned_valid_out
 
 );
+    localparam int unsigned FRACTION_WIDTH = 10;
 
     phase_e phase;
 
@@ -45,7 +46,7 @@ module psola_rewrite #(
 
     fp_div #(
         .WIDTH(32),
-        .FRACTION_WIDTH(10),
+        .FRACTION_WIDTH(FRACTION_WIDTH),
         .NUM_STAGES(8)
     ) tau_in_div (
         .clk_in(clk_in),
@@ -76,6 +77,24 @@ module psola_rewrite #(
     psola_phase_e psola_phase;
     logic [31:0] window_coeff;
     logic [$clog2(WINDOW_SIZE):0] i, j, offset;
+    logic [$clog2(WINDOW_SIZE):0] max_offset;
+
+    // BRAM signals
+    logic [$clog2(WINDOW_SIZE):0] sample_in_addr;
+    assign sample_in_addr = offset + i;
+    logic [$clog2(WINDOW_SIZE):0] sample_out_addr;
+    assign sample_out_addr = offset + j;
+    logic [15:0] data_i;
+    logic [31:0] data_i_windowed;
+    logic [31:0] data_j_out;
+    logic [31:0] data_j_out_delay;
+    logic [31:0] data_j_in;
+
+    // OUTPUT VALID
+    logic [1:0] sample_valid_pipe;
+    assign autotune_valid_out = sample_valid_pipe[1];
+
+    logic [$clog2(WINDOW_SIZE):0] autotuned_out_addr;
 
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
@@ -84,6 +103,8 @@ module psola_rewrite #(
             sample_count <= '0;
             tau_inv_done <= 0;
             closest_semitone_done <= 0;
+            autotuned_addr <= '0;
+            sample_in_pipe <= '0;
         end else begin
             if (sample_count == WINDOW_SIZE - 1) begin
                 sample_count  <= 0;
@@ -91,6 +112,11 @@ module psola_rewrite #(
             end else begin
                 sample_count <= sample_count - 1;
             end
+
+            if (sample_valid_in) begin
+                autotuned_addr <= autotuned_addr + 1;
+            end
+            sample_valid_pipe <= {sample_valid_pipe, sample_valid_in};
 
             case (phase)
                 WAITING: begin
@@ -110,7 +136,9 @@ module psola_rewrite #(
                     end
                     if (tau_inv_done && shifted_tau_done) begin
                         phase <= DOING_PSOLA;
+                        psola_phase <= READ1;
                         i <= 0;
+                        max_offset <= (tau << 1) < WINDOW_SIZE ? tau << 1 : WINDOW_SIZE;
                         j <= 0;
                         offset <= 0;
                         window_coeff <= 0;
@@ -118,36 +146,68 @@ module psola_rewrite #(
                 end
                 DOING_PSOLA: begin
                     case (psola_phase)
-                        GET_J1: begin
+                        READ1: psola_phase <= READ2;
+                        READ2: psola_phase <= VALUE_CALC1;
+                        VALUE_CALC1: begin
+                            if (i + offset < tau) begin
+                                data_i_windowed <= (data_i << FRACTION_WIDTH);
+                            end else begin
+                                data_i_windowed <= (data_i << FRACTION_WIDTH) * window_coeff;
+                            end
+                            data_j_out_delay <= data_j_out;
+                            psola_phase <= VALUE_CALC2;
                         end
-                        GET_J2: begin
+                        VALUE_CALC2: begin
+                            data_j_in <= data_i_windowed + data_j_out_delay;
+                            psola_phase <= VALUE_CALC2;
                         end
-                        GET_I1: begin
+                        WRITE: begin
+                            if (i + offset < tau && offset < max_offset) begin
+                                offset <= offset + 1;
+                                if (offset < tau_in) begin
+                                    //window_coeff <= window_coeff + (tau_inv << 1);
+                                    window_coeff <= (offset * tau_inv) << 1;
+                                end else begin
+                                    //window_coeff <= window_coeff - (tau_inv << 1);
+                                    window_coeff <= (1<<11) - ((offset * tau_inv) << 1);
+                                end
+                                phase <= READ1;
+                            // So that next cycle, i + tau < WINDOW_SIZE
+                            end else if (i + (tau << 1) < WINDOW_SIZE) begin
+                                i <= i + tau;
+                                max_offset <= ((tau << 1) + (i + tau) < WINDOW_SIZE ? tau << 1 : WINDOW_SIZE - i - tau;
+                                j <= j + shifted_tau;
+                                offset <= '0;
+                                window_coeff <= '0;
+                                phase <= READ1;
+                            end else begin
+                                phase <= WAITING;
+                                tau_inv_done <= 0;
+                                closest_semitone_done <= 0;
+                            end
                         end
-                        GET_I2: begin
-                        end
-                        WRITE_J: begin
-                        end
-                        default: ;  // impossible
                     endcase
                 end
-                default: ;  // impossible
             endcase
         end
     end
 
+    // PSOLA'ed/'ing signal values
     xilinx_true_dual_port_read_first_1_clock_ram #(
         .RAM_WIDTH(32),
         .RAM_DEPTH(2 * WINDOW_SIZE),
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) psola_bram (
         // A read port, B write port
-        .addra(),
-        .addrb(),
-        .dina(),
+        .addra(sample_out_addr + (window_toggle ? WINDOW_SIZE : 0)),
+        .dina(data_j_in),
+        .wea(psola_phase == WRITE),
+        .douta(data_j_out),
+
+        .addrb(autotuned_out_addr + (window_toggle ? 0 : WINDOW_SIZE)),
+        .doutb(autotuned_out),
         .dinb(),
         .clka(clk_in),
-        .wea(0),
         .web(),
         .ena(0),
         .enb(1),
@@ -155,8 +215,6 @@ module psola_rewrite #(
         .rstb(rst_in),
         .regcea(1),
         .regceb(1),
-        .douta(),
-        .doutb(psola_in_signal_val)
     );
 
     xilinx_true_dual_port_read_first_1_clock_ram #(
@@ -165,44 +223,24 @@ module psola_rewrite #(
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) sample_bram (
         // A read port, B write port
-        .addra(),
+        .addra(sample_in_addr + (window_toggle ? 0 : WINDOW_SIZE)),
+        .douta(data_i),
+
         .addrb(sample_count + (window_toggle ? WINDOW_SIZE : 0)),
-        .dina(),
         .dinb(sample_in),
+        .web(sample_valid_in),
+
+        .dina(),
         .clka(clk_in),
         .wea(0),
-        .web(sample_valid_in),
         .ena(0),
         .enb(1),
         .rsta(rst_in),
         .rstb(rst_in),
         .regcea(1),
         .regceb(1),
-        .douta(),
-        .doutb(psola_in_signal_val)
+        .doutb()
     );
 
 endmodule
 `default_nettype none
-
-// xilinx_true_dual_port_read_first_1_clock_ram #(
-//     .RAM_WIDTH(32),
-//     .RAM_DEPTH(2 * WINDOW_SIZE),
-//     .RAM_PERFORMANCE("HIGH_PERFORMANCE")
-// ) signal_bram (
-//     .addra(window_parity ? addr_in + WINDOW_SIZE : addr_in),
-//     .addrb(window_parity ? psola_read_addr : psola_read_addr + WINDOW_SIZE),
-//     .dina(sample_in),
-//     .dinb(0),
-//     .clka(clk_in),
-//     .wea(sample_valid_in),
-//     .web(0),
-//     .ena(1),
-//     .enb(1),
-//     .rsta(rst_in),
-//     .rstb(rst_in),
-//     .regcea(1),
-//     .regceb(1),
-//     .douta(),
-//     .doutb(psola_in_signal_val)
-// );
