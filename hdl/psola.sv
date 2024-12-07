@@ -141,10 +141,12 @@ module psola #(
 
 
     ///////// Window function calculation ///////////////
+    // FRUTI: this might need to be sequential because of the mul
     always_comb begin
         if (offset < tau_in) begin
             window_func_val = offset_piped * inv_tau_in;
         end else begin
+            // FRUTI: should this be 1 << 10?
             window_func_val = (2 << 10) - offset_piped * inv_tau_in;
         end
     end
@@ -196,7 +198,6 @@ module psola #(
             if (search_valid_out) begin
                 shifted_tau_in_found <= 1;
                 shifted_tau_in <= shifted_tau_in_temp;
-                // shifted_tau_in <= tau_in;
             end
 
             if (inv_tau_in_found && shifted_tau_in_found) begin
@@ -222,6 +223,9 @@ module psola #(
                 end
 
                 if (i_piped + offset_piped < tau_in && valid_read_piped) begin
+                    // FRUTI: are we multiplying by 2**10 because that's the
+                    // max window value and we're just leaving the signal
+                    // unchanged for the first half of the first pitch period?
                     write_val <= $signed($signed(signal_val) << 10);
                 end else if (valid_read_piped) begin
                     write_val <= $signed(curr_processed_val) +
@@ -234,6 +238,8 @@ module psola #(
         end else begin
             if (phase == 2) begin
                 window_len_valid_out <= 1;
+                // FRUTI
+                valid_write <= 0;
             end
             phase <= 0;
         end
