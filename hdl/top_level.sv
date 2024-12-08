@@ -149,31 +149,25 @@ module top_level (
     assign rgb0  = '0;
     assign rgb1  = '0;
 
-    logic [31:0] psola;
-    logic [31:0] raw_psola;
+    logic [15:0] psola;
+    logic [15:0] raw_psola;
     logic        psola_valid;
     logic        raw_psola_valid;
-    bram_wrapper #(
-        .WINDOW_SIZE (2048),
-        .MAX_EXTENDED(2200)
+
+    psola_rewrite #(
+        .WINDOW_SIZE(2048)
     ) psola_gen (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        // YIN output
-        .tau_in({1'b0, taumin}),
+        .tau_in(taumin),
         .tau_valid_in(taumin_valid),
 
-        // gets next window of input while running psola on current
-        .sample_in({6'b0, processed_sample, 10'b0}),
-        .addr_in(processed_sample_number),
+        .sample_in(processed_sample),
         .sample_valid_in(processed_sample_valid),
 
-        .out_val(raw_psola),
-        .out_addr_piped(),
-        .valid_out_piped(raw_psola_valid),
-
-        .done()
+        .autotuned_out(raw_psola),
+        .autotuned_valid_out(raw_psola_valid)
     );
 
     always_ff @(posedge clk_100mhz) begin
@@ -188,7 +182,7 @@ module top_level (
         .NBITS(16)
     ) audio_generator (
         .clk_in(clk_100mhz),
-        .d_in  (psola[31:16]),
+        .d_in  (psola),
         .rst_in(sys_rst),
         .d_out (spk_out)
     );
