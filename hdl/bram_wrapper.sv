@@ -29,11 +29,13 @@ module bram_wrapper #(
     logic window_parity;
     logic psola_parity;
 
-    // State logic
     logic psola_done;
-    logic output_done;
-    logic read_done;
-    logic [1:0] phase;  // 0: psola, 1: output, 2: idle; reading happens in parallel
+    typedef enum {
+        IDLE,
+        PSOLA,
+        OUTPUT
+    } state_e;
+    state_e state;
 
     // PSOLA module I/O registers
     logic [15:0] psola_in_signal_val;
@@ -51,7 +53,7 @@ module bram_wrapper #(
     // BRAM output registers
 
     logic [MAX_EXTENDED_BITS - 1:0] out_addr;
-    logic valid_out;
+    logic enable_write;
 
     // Pipelined output registers
 
@@ -61,7 +63,7 @@ module bram_wrapper #(
     ) valid_out_pipeline (
         .clk (clk_in),
         .rst (rst_in),
-        .din (valid_out),
+        .din (enable_write),
         .dout(valid_out_piped)
     );
 
@@ -83,9 +85,9 @@ module bram_wrapper #(
         .RAM_DEPTH(MAX_EXTENDED),
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) output_bram (
-        .addra((phase == 0) ? psola_write_addr : out_addr),
+        .addra((state == PSOLA) ? psola_write_addr : out_addr),
         .dina (0),
-        .wea  (phase == 1),
+        .wea  (enable_write),
         .douta(out_val),
 
         .addrb(psola_write_addr_piped),
@@ -139,7 +141,7 @@ module bram_wrapper #(
         .wea  (sample_valid_in),
         .douta(),
 
-        .addrb(psola_parity ? psola_read_addr + WINDOW_SIZE: psola_read_addr),
+        .addrb(psola_parity ? psola_read_addr + WINDOW_SIZE : psola_read_addr),
         .dinb ('0),
         .web  (1'b0),
         .doutb(psola_in_signal_val),
@@ -157,49 +159,43 @@ module bram_wrapper #(
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
             window_parity <= 0;
-            psola_parity <= 0; // TODO: should this be one?
+            psola_parity <= 0;  // TODO: should this be one?
 
-            phase <= 0;
-            done <= 0;
-            read_done <= 0;
-            output_done <= 0;
+            state <= IDLE;
 
-            valid_out <= 0;
-            out_addr <= 0;
-        end else if (tau_valid_in) begin
-            psola_parity <= ~window_parity;
-            phase <= 0;
-            read_done <= 0;
-            output_done <= 0;
-
-            valid_out <= 0;
-            out_addr <= 0;
-        end else if (output_done && read_done) begin
-            phase <= 0;
-            done <= 1;
-
-            valid_out <= 0;
-            out_addr <= 0;
-        end else if (phase == 0) begin
-            if (psola_done) begin
-                phase <= 1;
-            end
-            valid_out <= 0;
-        end else if (phase == 1) begin
-            if (out_addr_piped == psola_output_window_len - 1) begin
-                output_done <= 1;
-                valid_out   <= 0;
-            end else if (out_addr < psola_output_window_len - 1) begin
-                out_addr  <= out_addr + 1;
-                valid_out <= 1;
-            end else begin
-                valid_out <= 0;
-            end
+            enable_write <= 0;
+            out_addr <= '0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (tau_valid_in) begin
+                        psola_parity <= ~window_parity;
+                        state <= PSOLA;
+                    end
+                end
+                PSOLA: begin
+                    if (psola_done) begin
+                        state <= OUTPUT;
+                        out_addr <= 0;
+                        enable_write <= 1;
+                    end
+                end
+                OUTPUT: begin
+                    if (out_addr == psola_output_window_len - 1) begin
+                        state <= IDLE;
+                        enable_write <= 0;
+                    end else begin
+                        out_addr <= out_addr + 1;
+                    end
+                end
+                default: ;  // Impossible!
+            endcase
         end
 
-        if (addr_in == WINDOW_SIZE - 1 && sample_valid_in) begin
-            read_done <= 1;
-            window_parity <= ~window_parity;
+        if (sample_valid_in) begin
+            if (addr_in == WINDOW_SIZE - 1) begin
+                window_parity <= ~window_parity;
+            end
         end
     end
 endmodule
