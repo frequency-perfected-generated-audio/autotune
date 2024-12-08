@@ -27,6 +27,7 @@ module bram_wrapper #(
     // determines which portion BRAM to write to, alternates
     // parity 0 indicates using first half for psola, writing to second half; vice versa
     logic window_parity;
+    logic psola_parity;
 
     // State logic
     logic psola_done;
@@ -138,7 +139,7 @@ module bram_wrapper #(
         .wea  (sample_valid_in),
         .douta(),
 
-        .addrb(window_parity ? psola_read_addr : psola_read_addr + WINDOW_SIZE),
+        .addrb(psola_parity ? psola_read_addr + WINDOW_SIZE: psola_read_addr),
         .dinb ('0),
         .web  (1'b0),
         .doutb(psola_in_signal_val),
@@ -156,6 +157,7 @@ module bram_wrapper #(
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
             window_parity <= 0;
+            psola_parity <= 0; // TODO: should this be one?
 
             phase <= 0;
             done <= 0;
@@ -165,7 +167,7 @@ module bram_wrapper #(
             valid_out <= 0;
             out_addr <= 0;
         end else if (tau_valid_in) begin
-            window_parity <= ~window_parity;
+            psola_parity <= ~window_parity;
             phase <= 0;
             read_done <= 0;
             output_done <= 0;
@@ -182,6 +184,7 @@ module bram_wrapper #(
             if (psola_done) begin
                 phase <= 1;
             end
+            valid_out <= 0;
         end else if (phase == 1) begin
             if (out_addr_piped == psola_output_window_len - 1) begin
                 output_done <= 1;
@@ -196,6 +199,7 @@ module bram_wrapper #(
 
         if (addr_in == WINDOW_SIZE - 1 && sample_valid_in) begin
             read_done <= 1;
+            window_parity <= ~window_parity;
         end
     end
 endmodule
