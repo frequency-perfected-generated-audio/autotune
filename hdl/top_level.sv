@@ -72,10 +72,9 @@ module top_level (
     logic [10:0] processed_sample_number;
     always_ff @(posedge clk_100mhz) begin
         if (sys_rst) begin
-            processed_sample_number <= 0;
+            processed_sample_number <= 2048 - 1;
         end else if (sample_valid) begin
             processed_sample <= sample[23:8];
-            // TODO: this might be an off by one
             if (processed_sample_number == 2048 - 1) begin
                 processed_sample_number <= 0;
             end else begin
@@ -154,10 +153,12 @@ module top_level (
     logic [                    31:0] psola;
     logic [$clog2(MAX_EXTENDED)-1:0] psola_addr;
     logic                            psola_valid;
-    logic                            prev_psola_valid;
     logic [                    31:0] raw_psola;
     logic [$clog2(MAX_EXTENDED)-1:0] raw_psola_addr;
     logic                            raw_psola_valid;
+
+    logic                            raw_psola_done;
+    logic                            psola_done;
     bram_wrapper #(
         .WINDOW_SIZE (2048),
         .MAX_EXTENDED(MAX_EXTENDED)
@@ -178,7 +179,7 @@ module top_level (
         .out_addr_piped(raw_psola_addr),
         .valid_out_piped(raw_psola_valid),
 
-        .done()
+        .done(raw_psola_done)
     );
 
     xilinx_true_dual_port_read_first_1_clock_ram #(
@@ -220,13 +221,15 @@ module top_level (
                 psola <= raw_psola;
                 psola_addr <= raw_psola_addr;
             end
+            psola_valid <= raw_psola_valid;
+            psola_done  <= raw_psola_done;
 
             // Switch on negedge of psola_valid, aka when samples are done being written
-            if (prev_psola_valid > psola_valid) begin
+            if (psola_done) begin
                 psola_parity <= ~psola_parity;
-                psola_output_addr <= '0;
                 psola_hold_count <= '0;
-            end else if (processed_sample_valid) begin
+                psola_output_addr <= '0;
+            end else begin
                 if (psola_hold_count == 2304 - 1) begin
                     psola_hold_count  <= 0;
                     psola_output_addr <= psola_output_addr + 1;
@@ -234,18 +237,19 @@ module top_level (
                     psola_hold_count <= psola_hold_count + 1;
                 end
             end
-
-            psola_valid <= raw_psola_valid;
-            prev_psola_valid <= psola_valid;
         end
     end
 
+    logic [31:0] psola_spk_input_reg;
+    always_ff @(posedge clk_100mhz) begin
+        psola_spk_input_reg <= psola_spk_input;
+    end
     logic spk_out;
     pdm #(
-        .NBITS(32)
+        .NBITS(16)
     ) audio_generator (
         .clk_in(clk_100mhz),
-        .d_in  (psola_spk_input),
+        .d_in  (psola_spk_input_reg[25:10]),
         .rst_in(sys_rst),
         .d_out (spk_out)
     );
