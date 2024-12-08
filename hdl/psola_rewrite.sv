@@ -31,6 +31,7 @@ module psola_rewrite #(
 
 );
     localparam int unsigned FRACTION_WIDTH = 11;
+    localparam int unsigned MAX_EXTENDED = 2200;
 
     phase_e phase;
 
@@ -91,7 +92,7 @@ module psola_rewrite #(
     logic [31:0] data_j_in;
 
     // OUTPUT VALID
-    logic [ 1:0] sample_valid_pipe;
+    logic [1:0] sample_valid_pipe;
     assign autotuned_valid_out = sample_valid_pipe[1];
 
     logic [$clog2(WINDOW_SIZE):0] autotuned_out_addr;
@@ -106,7 +107,9 @@ module psola_rewrite #(
             autotuned_out_addr <= '0;
             sample_valid_pipe <= '0;
         end else begin
-            if (sample_valid_in) begin
+            // So that we don't change window_toggle/sample_count before
+            // we reset the last psola value
+            if (sample_valid_pipe[1]) begin
                 autotuned_out_addr <= autotuned_out_addr + 1;
                 if (sample_count == WINDOW_SIZE - 1) begin
                     sample_count  <= 0;
@@ -161,6 +164,7 @@ module psola_rewrite #(
                             psola_phase <= WRITE;
                         end
                         WRITE: begin
+                            psola_phase <= READ1;
                             if (offset + 1 < max_offset) begin
                                 offset <= offset + 1;
                                 if (offset < tau_in) begin
@@ -170,7 +174,6 @@ module psola_rewrite #(
                                     //window_coeff <= window_coeff - (tau_inv << 1);
                                     window_coeff <= (2 << FRACTION_WIDTH) - ((offset+1) * tau_inv);
                                 end
-                                psola_phase <= READ1;
                                 // So that next cycle, i + tau < WINDOW_SIZE
                             end else if (i + (tau << 1) < WINDOW_SIZE) begin
                                 i <= i + tau;
@@ -178,11 +181,13 @@ module psola_rewrite #(
                                 j <= j + shifted_tau;
                                 offset <= '0;
                                 window_coeff <= '0;
-                                psola_phase <= READ1;
                             end else begin
                                 phase <= WAITING;
                                 tau_inv_done <= 0;
                                 shifted_tau_done <= 0;
+                                offset <= 0;
+                                i <= 0;
+                                j <= 0;
                             end
                         end
                     endcase
@@ -205,9 +210,10 @@ module psola_rewrite #(
 
         .addrb(autotuned_out_addr + (window_toggle ? 0 : WINDOW_SIZE)),
         .doutb(autotuned_out),
-        .dinb(),
+        .dinb('0),
+        .web(sample_valid_pipe[1]),
+
         .clka(clk_in),
-        .web(),
         .ena(1'b1),
         .enb(1'b1),
         .rsta(rst_in),
@@ -218,7 +224,7 @@ module psola_rewrite #(
 
     xilinx_true_dual_port_read_first_1_clock_ram #(
         .RAM_WIDTH(16),
-        .RAM_DEPTH(2 * WINDOW_SIZE),
+        .RAM_DEPTH(2 * MAX_EXTENDED),
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) sample_bram (
         // A read port, B write port

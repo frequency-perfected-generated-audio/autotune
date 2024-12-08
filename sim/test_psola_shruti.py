@@ -82,7 +82,7 @@ async def receive_tau(dut, period, signal):
     await ClockCycles(dut.clk_in, 1, rising=False)
     assert dut.phase == DOING_PSOLA, "dut not going into psola after div/search"
 
-    processed = [0 for i in range(WINDOW_SIZE)]
+    processed = [0 for i in range(2*WINDOW_SIZE)]
 
     i = 0
     j = 0
@@ -126,7 +126,7 @@ async def receive_tau(dut, period, signal):
             actual_data_i = int(dut.data_i.value)
             actual_data_j = int(dut.data_j_out.value)
             assert actual_data_i == signal[i+offset], f"Expected signal value {signal[i]}, got {actual_data_i}"
-            assert actual_data_j == processed[j+offset], f"Expected in-progress value {processed[j]}, got {actual_data_j}"
+            assert actual_data_j == processed[j+offset], f"Expected in-progress value {processed[j+offset]}, got {actual_data_j}"
 
             await ClockCycles(dut.clk_in, 1, rising=False)
             assert dut.psola_phase.value == VALUE_CALC2, "not transitioning into VALUE_CALC2"
@@ -143,7 +143,7 @@ async def receive_tau(dut, period, signal):
             assert dut.psola_phase.value == WRITE, "not transitioning into WRITE"
             processed[j+offset] += exp_windowed
             actual_sum = dut.data_j_in.value
-            assert actual_sum == processed[j+offset], f"Expected write value {processed[j]}, got {actual_sum}"
+            assert actual_sum == processed[j+offset], f"Expected write value {processed[j+offset]}, got {actual_sum}"
 
             await ClockCycles(dut.clk_in, 1, rising=False)
             offset += 1
