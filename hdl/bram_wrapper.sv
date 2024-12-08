@@ -32,12 +32,7 @@ module bram_wrapper #(
     logic psola_done;
     logic output_done;
     logic read_done;
-    typedef enum {
-        PSOLA,
-        OUTPUT,
-        DONE
-    } phase_e;
-    phase_e phase;  // 0: psola, 1: output, 2: idle; reading happens in parallel
+    logic [1:0] phase;  // 0: psola, 1: output, 2: idle; reading happens in parallel
 
     // PSOLA module I/O registers
     logic [15:0] psola_in_signal_val;
@@ -87,9 +82,9 @@ module bram_wrapper #(
         .RAM_DEPTH(MAX_EXTENDED),
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) output_bram (
-        .addra((phase == PSOLA) ? psola_write_addr : out_addr),
+        .addra((phase == 0) ? psola_write_addr : out_addr),
         .dina (0),
-        .wea  (phase == OUTPUT),
+        .wea  (phase == 1),
         .douta(out_val),
 
         .addrb(psola_write_addr_piped),
@@ -183,11 +178,11 @@ module bram_wrapper #(
 
             valid_out <= 0;
             out_addr <= 0;
-        end else if (phase == PSOLA) begin
+        end else if (phase == 0) begin
             if (psola_done) begin
                 phase <= 1;
             end
-        end else if (phase == OUTPUT) begin
+        end else if (phase == 1) begin
             if (out_addr_piped == psola_output_window_len - 1) begin
                 output_done <= 1;
                 valid_out   <= 0;
