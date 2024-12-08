@@ -32,6 +32,7 @@ module psola_rewrite #(
 );
     localparam int unsigned FRACTION_WIDTH = 11;
     localparam int unsigned MAX_EXTENDED = 2200;
+    localparam int unsigned OVERHANG = MAX_EXTENDED - WINDOW_SIZE;
 
     phase_e phase;
 
@@ -92,8 +93,10 @@ module psola_rewrite #(
     logic [31:0] data_j_in;
 
     // OUTPUT VALID
-    logic [1:0] sample_valid_pipe;
+    logic [2:0] sample_valid_pipe;
     assign autotuned_valid_out = sample_valid_pipe[1];
+    logic [31:0] autotuned_out_pre_clamp;
+    assign autotuned_out = autotuned_out_pre_clamp >> FRACTION_WIDTH;
 
     logic [$clog2(WINDOW_SIZE):0] autotuned_out_addr;
 
@@ -104,13 +107,11 @@ module psola_rewrite #(
             sample_count <= '0;
             tau_inv_done <= 0;
             shifted_tau_done <= 0;
-            autotuned_out_addr <= '0;
             sample_valid_pipe <= '0;
         end else begin
             // So that we don't change window_toggle/sample_count before
             // we reset the last psola value
-            if (sample_valid_pipe[1]) begin
-                autotuned_out_addr <= autotuned_out_addr + 1;
+            if (sample_valid_pipe[2]) begin
                 if (sample_count == WINDOW_SIZE - 1) begin
                     sample_count  <= 0;
                     window_toggle <= ~window_toggle;
@@ -199,19 +200,19 @@ module psola_rewrite #(
     // PSOLA'ed/'ing signal values
     xilinx_true_dual_port_read_first_1_clock_ram #(
         .RAM_WIDTH(32),
-        .RAM_DEPTH(2 * WINDOW_SIZE),
+        .RAM_DEPTH(2 * MAX_EXTENDED),
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) psola_bram (
         // A read port, B write port
-        .addra(sample_out_addr + (window_toggle ? WINDOW_SIZE : 0)),
+        .addra(sample_out_addr + (window_toggle ? MAX_EXTENDED : 0)),
         .dina (data_j_in),
         .wea  (psola_phase == WRITE),
         .douta(data_j_out),
 
-        .addrb(autotuned_out_addr + (window_toggle ? 0 : WINDOW_SIZE)),
-        .doutb(autotuned_out),
+        .addrb(sample_count + (window_toggle ? 0 : MAX_EXTENDED) + (sample_valid_pipe[2] ? WINDOW_SIZE : 0)),
+        .doutb(autotuned_out_pre_clamp),
         .dinb('0),
-        .web(sample_valid_pipe[1]),
+        .web(sample_valid_pipe[1] || (sample_valid_pipe[2] && sample_count < OVERHANG)),
 
         .clka(clk_in),
         .ena(1'b1),
@@ -224,7 +225,7 @@ module psola_rewrite #(
 
     xilinx_true_dual_port_read_first_1_clock_ram #(
         .RAM_WIDTH(16),
-        .RAM_DEPTH(2 * MAX_EXTENDED),
+        .RAM_DEPTH(2 * WINDOW_SIZE),
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) sample_bram (
         // A read port, B write port

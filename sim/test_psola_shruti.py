@@ -9,6 +9,7 @@ from cocotb.clock import Clock
 from cocotb.runner import get_runner
 from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 from scipy.io import wavfile
+from matplotlib import pyplot as plt
 
 WINDOW_SIZE = 2048
 SAMPLING_RATE = 44100
@@ -156,6 +157,9 @@ async def receive_tau(dut, period, signal):
             assert dut.phase.value == WAITING, "not transitioning back to WAITING after offset cycle"
             break
 
+        new_processed = [(p >> FRACTION_WIDTH) & 0b1111111111111111 for p in processed]
+        new_processed = np.array(new_processed, dtype=np.uint16)
+        return new_processed
 
 async def feed_samples(dut, window_idx):
      for sample in signal[window_idx*WINDOW_SIZE:WINDOW_SIZE*(window_idx+1)]:
@@ -177,14 +181,40 @@ async def test_psola(dut):
 
     #await ClockCycles(dut.clk_in, 50000)
 
+    autotuned_out = []
     # Testing diff portion
-    for window_idx, tau_in in enumerate(periods[:3]):
+    for window_idx, tau_in in enumerate(periods[:2]):
+        print(window_idx)
         await feed_samples(dut, window_idx)
         await ClockCycles(dut.clk_in, 1, rising=False)
         dut.tau_valid_in.value = 1
         dut.tau_in.value = tau_in
-        #await ClockCycles(dut.clk_in, 50000)
-        await receive_tau(dut, tau_in, signal[window_idx*WINDOW_SIZE:WINDOW_SIZE*(window_idx+1)])
+        await ClockCycles(dut.clk_in, 50000)
+        x = await receive_tau(dut, tau_in, signal[window_idx*WINDOW_SIZE:WINDOW_SIZE*(window_idx+1)])
+        autotuned_out.extend(x)
+
+    # Plot the original signal
+    plt.figure(figsize=(14, 7))
+    plt.subplot(2, 1, 1)
+    plt.plot(signal, label="Original Signal")
+    plt.title("Original Signal")
+    plt.xlabel("Sample")
+    plt.ylabel("Amplitude")
+    plt.legend()
+
+    # Plot the processed signal
+    plt.subplot(2, 1, 2)
+    plt.plot(autotuned_out, label="Processed Signal", color="orange")
+    plt.title("Processed Signal")
+    plt.xlabel("Sample")
+    plt.ylabel("Amplitude")
+    plt.legend()
+
+    plt.tight_layout()
+
+    plt.savefig("waveform_plots_psola_bram.png")
+    plt.show()
+
 
 
 def main():
