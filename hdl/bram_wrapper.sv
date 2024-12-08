@@ -32,7 +32,12 @@ module bram_wrapper #(
     logic psola_done;
     logic output_done;
     logic read_done;
-    logic [1:0] phase;  // 0: psola, 1: output, 2: idle; reading happens in parallel
+    typedef enum {
+        PSOLA,
+        OUTPUT,
+        DONE
+    } phase_e;
+    phase_e phase;  // 0: psola, 1: output, 2: idle; reading happens in parallel
 
     // PSOLA module I/O registers
     logic [15:0] psola_in_signal_val;
@@ -82,21 +87,23 @@ module bram_wrapper #(
         .RAM_DEPTH(MAX_EXTENDED),
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) output_bram (
-        .addra((phase == 0) ? psola_write_addr : out_addr),
+        .addra((phase == PSOLA) ? psola_write_addr : out_addr),
+        .dina (0),
+        .wea  (phase == OUTPUT),
+        .douta(out_val),
+
         .addrb(psola_write_addr_piped),
-        .dina(0),
-        .dinb(psola_write_val),
+        .dinb (psola_write_val),
+        .web  (psola_valid_write),
+        .doutb(),
+
         .clka(clk_in),
-        .wea(phase == 1),
-        .web(psola_valid_write),
         .ena(1'b1),
         .enb(1'b1),
         .rsta(rst_in),
         .rstb(rst_in),
         .regcea(1'b1),
-        .regceb(1'b1),
-        .douta(out_val),
-        .doutb()
+        .regceb(1'b1)
     );
 
     assign psola_in_curr_processed_val = out_val;
@@ -132,20 +139,22 @@ module bram_wrapper #(
         .RAM_PERFORMANCE("HIGH_PERFORMANCE")
     ) signal_bram (
         .addra(window_parity ? addr_in + WINDOW_SIZE : addr_in),
+        .dina (sample_in),
+        .wea  (sample_valid_in),
+        .douta(),
+
         .addrb(window_parity ? psola_read_addr : psola_read_addr + WINDOW_SIZE),
-        .dina(sample_in),
-        .dinb('0),
+        .dinb ('0),
+        .web  (1'b0),
+        .doutb(psola_in_signal_val),
+
         .clka(clk_in),
-        .wea(sample_valid_in),
-        .web(1'b0),
         .ena(1'b1),
         .enb(1'b1),
         .rsta(rst_in),
         .rstb(rst_in),
         .regcea(1'b1),
-        .regceb(1'b1),
-        .douta(),
-        .doutb(psola_in_signal_val)
+        .regceb(1'b1)
     );
 
 
@@ -174,11 +183,11 @@ module bram_wrapper #(
 
             valid_out <= 0;
             out_addr <= 0;
-        end else if (phase == 0) begin
+        end else if (phase == PSOLA) begin
             if (psola_done) begin
                 phase <= 1;
             end
-        end else if (phase == 1) begin
+        end else if (phase == OUTPUT) begin
             if (out_addr_piped == psola_output_window_len - 1) begin
                 output_done <= 1;
                 valid_out   <= 0;
