@@ -15,7 +15,7 @@ from scipy.io import wavfile
 
 WINDOW_SIZE = 2048  # Change if your module uses a different size
 SAMPLE_RATE = 44100
-FRACTION_BITS = 11
+FRACTION_BITS = 14
 
 
 # Helper Functions
@@ -48,7 +48,7 @@ async def process_window(dut, next_window, tau_in):
             dut.sample_valid_in.value = 0
 
         if dut.valid_out_piped.value.integer == 1:
-            if dut.out_val.value.integer >= 2**27:
+            if dut.out_val.value.integer >= 2 ** (16 + FRACTION_BITS):
                 dut._log.info(f"VALUE: {dut.out_val.value.integer}")
                 raise ValueError(f"out val too high on sample {len(out)}")
             out.append(dut.out_val.value.integer)
@@ -57,9 +57,14 @@ async def process_window(dut, next_window, tau_in):
         cycle += 1
 
     # Collect output
+    dut._log.info(f"Original period: {tau_in}")
     dut._log.info(f"PSOLA produced window of length {len(out)}")
     # window_len_out = dut.window_len_out.value.integer
-    # dut._log.info(f"PSOLA produced window of length {window_len_out}")
+    dut._log.info(
+        f"Min value was {min(out) / (2 ** FRACTION_BITS)} at position {np.argmin(out)}"
+    )
+    dut._log.info(f"-------------------------------------------")
+    dut._log.info(f"Min INPUT signal value: {min(next_window)}")
 
     return [x / (2**FRACTION_BITS) for x in out]
 
@@ -102,13 +107,15 @@ async def test_psola(dut):
 
         fp_window = [int(x) for x in window]
 
-        dut._log.info(f"Window {i}:")
         output_window = await process_window(dut, fp_window, tau_in)
         processed_signal.extend(output_window)
 
     # Save the processed audio
     processed_signal = np.array(processed_signal) - 32768
-    sf.write("cocotb_psola_bram_output.wav", processed_signal, SAMPLE_RATE)
+    # sf.write("cocotb_psola_bram_output.wav", processed_signal, SAMPLE_RATE)
+    wavfile.write(
+        "cocotb_psola_bram_output.wav", SAMPLE_RATE, processed_signal.astype(np.int16)
+    )
 
     # Plot the original signal
     plt.figure(figsize=(14, 7))

@@ -2,7 +2,7 @@
 module psola #(
     parameter int WINDOW_SIZE   = 2048,
     parameter int MAX_EXTENDED  = 2200,
-    parameter int FRACTION_BITS = 11
+    parameter int FRACTION_BITS = 14
 ) (
     input wire clk_in,
     input wire rst_in,
@@ -221,7 +221,7 @@ module psola #(
                     window_len_out <= j_piped + offset_piped + 1;
                 end
 
-                if (i_piped + offset_piped < tau_in && valid_read_piped) begin
+                if (((i_piped + offset_piped < tau_in) || (i_piped + 2 * tau_in > WINDOW_SIZE && offset_piped > tau_in)) && valid_read_piped) begin
                     write_val <= signal_val << FRACTION_BITS;
                 end else if (valid_read_piped) begin
                     write_val <= curr_processed_val + (signal_val * window_func_val_piped);
