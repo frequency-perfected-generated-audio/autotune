@@ -15,7 +15,8 @@ typedef enum {
 } psola_phase_e;
 
 module psola_rewrite #(
-    parameter int WINDOW_SIZE = 2048
+    parameter int WINDOW_SIZE = 2048,
+    parameter int FRACTION_WIDTH = 11
 ) (
     input wire clk_in,
     input wire rst_in,
@@ -30,7 +31,6 @@ module psola_rewrite #(
     output logic autotuned_valid_out
 
 );
-    localparam int unsigned FRACTION_WIDTH = 11;
     localparam int unsigned MAX_EXTENDED = 2200;
     localparam int unsigned OVERHANG = MAX_EXTENDED - WINDOW_SIZE;
 
@@ -77,7 +77,7 @@ module psola_rewrite #(
 
     // DOING_PSOLA
     psola_phase_e psola_phase;
-    logic [FRACTION_WIDTH+1:0] window_coeff; // Always less than 2
+    logic [FRACTION_WIDTH+1:0] window_coeff;  // Always less than 2
     logic [$clog2(WINDOW_SIZE):0] i, j, offset;
     logic [$clog2(WINDOW_SIZE):0] max_offset;
 
@@ -93,7 +93,7 @@ module psola_rewrite #(
     logic [31:0] data_j_in;
 
     // OUTPUT VALID
-    logic [2:0] sample_valid_pipe;
+    logic [ 2:0] sample_valid_pipe;
     assign autotuned_valid_out = sample_valid_pipe[1];
     logic [31:0] autotuned_out_pre_clamp;
     assign autotuned_out = autotuned_out_pre_clamp >> FRACTION_WIDTH;
@@ -170,7 +170,7 @@ module psola_rewrite #(
                                 offset <= offset + 1;
                                 if (offset < tau_in) begin
                                     //window_coeff <= window_coeff + (tau_inv << 1);
-                                    window_coeff <= (offset+1) * tau_inv;
+                                    window_coeff <= (offset + 1) * tau_inv;
                                 end else begin
                                     //window_coeff <= window_coeff - (tau_inv << 1);
                                     window_coeff <= (2 << FRACTION_WIDTH) - ((offset+1) * tau_inv);

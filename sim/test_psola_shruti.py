@@ -157,9 +157,9 @@ async def receive_tau(dut, period, signal):
             assert dut.phase.value == WAITING, "not transitioning back to WAITING after offset cycle"
             break
 
-        new_processed = [(p >> FRACTION_WIDTH) & 0b1111111111111111 for p in processed]
-        new_processed = np.array(new_processed, dtype=np.uint16)
-        return new_processed
+    new_processed = [(p >> FRACTION_WIDTH) & 0b1111111111111111 for p in processed]
+    new_processed = np.array(new_processed, dtype=np.uint16)
+    return new_processed
 
 async def feed_samples(dut, window_idx):
      for sample in signal[window_idx*WINDOW_SIZE:WINDOW_SIZE*(window_idx+1)]:
@@ -183,7 +183,7 @@ async def test_psola(dut):
 
     autotuned_out = []
     # Testing diff portion
-    for window_idx, tau_in in enumerate(periods[:2]):
+    for window_idx, tau_in in enumerate(periods[:4]):
         print(window_idx)
         await feed_samples(dut, window_idx)
         await ClockCycles(dut.clk_in, 1, rising=False)
@@ -191,7 +191,13 @@ async def test_psola(dut):
         dut.tau_in.value = tau_in
         await ClockCycles(dut.clk_in, 50000)
         x = await receive_tau(dut, tau_in, signal[window_idx*WINDOW_SIZE:WINDOW_SIZE*(window_idx+1)])
-        autotuned_out.extend(x)
+        autotuned_out.extend(x[:2048])
+
+    autotuned_out = np.array(autotuned_out) - 32768
+    # sf.write("cocotb_psola_bram_output.wav", processed_signal, SAMPLE_RATE)
+    wavfile.write(
+        "cocotb_psola_bram_output.wav", 44100, autotuned_out.astype(np.int16)
+    )
 
     # Plot the original signal
     plt.figure(figsize=(14, 7))
@@ -231,7 +237,7 @@ def main():
         proj_path / "hdl" / "pipeline.sv",
     ]
     build_test_args = ["-Wall"]
-    parameters = {"WINDOW_SIZE": WINDOW_SIZE}
+    parameters = {"WINDOW_SIZE": WINDOW_SIZE, "FRACTION_WIDTH": FRACTION_WIDTH}
     sys.path.append(str(proj_path / "sim"))
     runner = get_runner(sim)
     runner.build(
