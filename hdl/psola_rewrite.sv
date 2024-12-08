@@ -30,7 +30,7 @@ module psola_rewrite #(
     output logic autotuned_valid_out
 
 );
-    localparam int unsigned FRACTION_WIDTH = 10;
+    localparam int unsigned FRACTION_WIDTH = 11;
 
     phase_e phase;
 
@@ -75,7 +75,7 @@ module psola_rewrite #(
 
     // DOING_PSOLA
     psola_phase_e psola_phase;
-    logic [31:0] window_coeff;
+    logic [FRACTION_WIDTH+1:0] window_coeff; // Always less than 2
     logic [$clog2(WINDOW_SIZE):0] i, j, offset;
     logic [$clog2(WINDOW_SIZE):0] max_offset;
 
@@ -106,15 +106,14 @@ module psola_rewrite #(
             autotuned_out_addr <= '0;
             sample_valid_pipe <= '0;
         end else begin
-            if (sample_count == WINDOW_SIZE - 1) begin
-                sample_count  <= 0;
-                window_toggle <= ~window_toggle;
-            end else begin
-                sample_count <= sample_count + 1;
-            end
-
             if (sample_valid_in) begin
                 autotuned_out_addr <= autotuned_out_addr + 1;
+                if (sample_count == WINDOW_SIZE - 1) begin
+                    sample_count  <= 0;
+                    window_toggle <= ~window_toggle;
+                end else begin
+                    sample_count <= sample_count + 1;
+                end
             end
             sample_valid_pipe <= {sample_valid_pipe, sample_valid_in};
 
@@ -152,24 +151,24 @@ module psola_rewrite #(
                             if (i + offset < tau) begin
                                 data_i_windowed <= (data_i << FRACTION_WIDTH);
                             end else begin
-                                data_i_windowed <= (data_i << FRACTION_WIDTH) * window_coeff;
+                                data_i_windowed <= data_i * window_coeff;
                             end
                             data_j_out_delay <= data_j_out;
                             psola_phase <= VALUE_CALC2;
                         end
                         VALUE_CALC2: begin
                             data_j_in   <= data_i_windowed + data_j_out_delay;
-                            psola_phase <= VALUE_CALC2;
+                            psola_phase <= WRITE;
                         end
                         WRITE: begin
-                            if (i + offset < tau && offset < max_offset) begin
+                            if (offset + 1 < max_offset) begin
                                 offset <= offset + 1;
                                 if (offset < tau_in) begin
                                     //window_coeff <= window_coeff + (tau_inv << 1);
-                                    window_coeff <= (offset * tau_inv) << 1;
+                                    window_coeff <= (offset+1) * tau_inv;
                                 end else begin
                                     //window_coeff <= window_coeff - (tau_inv << 1);
-                                    window_coeff <= (1 << 11) - ((offset * tau_inv) << 1);
+                                    window_coeff <= (2 << FRACTION_WIDTH) - ((offset+1) * tau_inv);
                                 end
                                 psola_phase <= READ1;
                                 // So that next cycle, i + tau < WINDOW_SIZE
@@ -209,7 +208,7 @@ module psola_rewrite #(
         .dinb(),
         .clka(clk_in),
         .web(),
-        .ena(1'b0),
+        .ena(1'b1),
         .enb(1'b1),
         .rsta(rst_in),
         .rstb(rst_in),
@@ -233,7 +232,7 @@ module psola_rewrite #(
         .dina(),
         .clka(clk_in),
         .wea(1'b0),
-        .ena(1'b0),
+        .ena(1'b1),
         .enb(1'b1),
         .rsta(rst_in),
         .rstb(rst_in),
