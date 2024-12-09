@@ -13,7 +13,7 @@ from scipy.io import wavfile
 SAMPLE_RATE = 44100
 WINDOW_SIZE = 2048
 FRACTION_BITS = 14
-
+CYCLES_PER_SAMPLE = 5
 out = []
 
 
@@ -38,8 +38,8 @@ async def test_bufferizer(dut):
 
     BASE_PATH = Path(__file__).resolve().parent.parent
 
-    AUDIO_PATH = BASE_PATH / "test_data" / "slide.wav"
-    tau_inS_PATH = BASE_PATH / "test_data" / "slide-windows.txt"
+    AUDIO_PATH = BASE_PATH / "test_data" / "aladdin-new.wav"
+    tau_inS_PATH = BASE_PATH / "test_data" / "aladdin-new-windows.txt"
 
     # Load the audio file and tau_ins from YIN
     # input_wave, _ = librosa.load(AUDIO_PATH, sr=SAMPLE_RATE)
@@ -119,9 +119,10 @@ def main():
         proj_path / "hdl" / "xilinx_true_dual_port_read_first_1_clock_ram.v",
         proj_path / "hdl" / "fp_div.sv",
         proj_path / "hdl" / "pipeline.sv",
+        proj_path / "hdl" / "ring_buffer.sv",
     ]
     build_test_args = ["-Wall"]
-    parameters = {}
+    parameters = {"CYCLES_PER_SAMPLE": CYCLES_PER_SAMPLE}
     sys.path.append(str(proj_path / "sim"))
     runner = get_runner(sim)
     runner.build(
