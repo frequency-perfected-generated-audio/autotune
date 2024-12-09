@@ -267,12 +267,26 @@ module top_level (
         end
     end
 
+    uart_turbo_transmit #(
+        .INPUT_CLOCK_FREQ(100_000_000),
+        .BAUD_RATE(961600)
+    ) turbo_uart (
+        .clk_in(clk_100mhz),
+        .rst_in(sys_rst),
+
+        .data_in(audio[29:14]),
+        .trigger_in(raw_audio_valid),
+
+        .busy_out(),
+        .tx_wire_out(uart_txd)
+    );
+
     logic spk_out;
     pdm #(
-        .NBITS(32)
+        .NBITS(16)
     ) audio_generator (
         .clk_in(clk_100mhz),
-        .d_in  (audio),
+        .d_in  (audio[29:14]),
         .rst_in(sys_rst),
         .d_out (spk_out)
     );
