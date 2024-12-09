@@ -24,29 +24,43 @@ module ring_buffer #(
   logic [ADDRSIZE-1:0] tail;
   logic data_valid_pipe;
 
+  logic [DATA_WIDTH-1:0] line_buffer_out;
+
+  logic cycle_toggle;
+
+  logic [DATA_WIDTH-1:0] crossing_data;
+  logic [1:0][DATA_WIDTH-1:0] old_tail_data;
+  assign crossing_data = (cycle_toggle) ? old_tail_data[0] : old_tail_data[1];
+
+  logic crossing;
+  assign crossing = head == tail;
+
+  logic zero_flag;
+
+  assign data_out = (!crossing) ? line_buffer_out : crossing_data;
+  assign zero_flag = data_out == '0 && data_valid_out;
+
   always_ff @(posedge clk_in) begin
     if (rst_in) begin
       head <= 0;
       tail <= 0;
+      cycle_toggle <= 0;
+
+      old_tail_data <= '0;
     end else begin
       if (shift_trigger) begin
-          if (head == ENTRIES - 1) begin
-              head <= 0;
-          end else begin
-              head <= head + 1;
-          end
+          head <= (head == ENTRIES - 1) ? 0 : head + 1;
       end
 
       if (read_trigger) begin
-          if (tail == ENTRIES - 1) begin
-              tail <= 0;
-          end else begin
-              tail <= tail + 1;
+          cycle_toggle <= ~cycle_toggle;
+          if (!crossing) begin
+              tail <= (tail == ENTRIES - 1) ? 0 : tail + 1;
+              old_tail_data <= {old_tail_data, line_buffer_out};
           end
       end
 
-      data_valid_pipe <= read_trigger;
-      data_valid_out <= data_valid_pipe;
+      data_valid_out <= read_trigger;
     end
   end
 
@@ -63,9 +77,9 @@ module ring_buffer #(
 
       // Reading Port
       .addrb(tail),
-      .dinb(),
-      .web(1'b0),
-      .doutb(data_out),
+      .dinb('b0),
+      .web(read_trigger && !crossing),
+      .doutb(line_buffer_out),
 
       // Other stuff
       .clka (clk_in),
