@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import cocotb
+import matplotlib.pyplot as plt
 import numpy as np
 from cocotb.clock import Clock
 from cocotb.runner import get_runner
@@ -21,7 +22,7 @@ async def logger(dut):
     while True:
         if dut.audio_valid_out.value == 1:
             x = dut.audio_out.value.integer / (2**FRACTION_BITS) - 32768
-            dut._log.info(f"{count=} {x=}")
+            # dut._log.info(f"{count=} {x=}")
             out.append(x)
             count += 1
         await ClockCycles(dut.clk_in, 1, rising=False)
@@ -59,11 +60,12 @@ async def test_bufferizer(dut):
 
     cocotb.start_soon(logger(dut))
 
-    for i, samp in enumerate(input_wave[:10000]):
+    for i, samp in enumerate(input_wave):
         await FallingEdge(dut.clk_in)
         dut.sample_in.value = int(samp)
         dut.sample_valid_in.value = 1
         if i > 2048 and i % 2048 == 20:
+            dut._log.info(f"{tau_ins[i // 2048 - 1]=} {len(out)=}")
             dut.taumin_in.value = tau_ins[i // 2048 - 1]
             dut.taumin_valid_in.value = 1
         await ClockCycles(dut.clk_in, 1, rising=False)
@@ -71,6 +73,36 @@ async def test_bufferizer(dut):
             dut.taumin_valid_in.value = 0
         dut.sample_valid_in.value = 0
         await ClockCycles(dut.clk_in, 4)
+
+    processed_signal = np.array(out)
+    # # sf.write("cocotb_psola_bram_output.wav", processed_signal, SAMPLE_RATE)
+    wavfile.write(
+        "cocotb_psola_bram_output.wav", SAMPLE_RATE, processed_signal.astype(np.int16)
+    )
+
+    # Plot the original signal
+    plt.figure(figsize=(14, 7))
+    plt.subplot(2, 1, 1)
+    plt.plot(input_wave, label="Original Signal")
+    plt.title("Original Signal")
+    plt.xlabel("Sample")
+    plt.ylabel("Amplitude")
+    plt.legend()
+
+    # Plot the processed signal
+    plt.subplot(2, 1, 2)
+    plt.plot(processed_signal, label="Processed Signal", color="orange")
+    plt.title("Processed Signal")
+    plt.xlabel("Sample")
+    plt.ylabel("Amplitude")
+    plt.legend()
+
+    plt.tight_layout()
+
+    plt.savefig("waveform_plots_psola_bram.png")
+    plt.show()
+
+    dut._log.info("Processed audio saved to cocotb_psola_bram_output.wav")
 
 
 def main():
