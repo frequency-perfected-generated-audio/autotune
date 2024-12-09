@@ -86,8 +86,7 @@ module bufferizer #(
                     end
                 end
                 PLAYING: begin
-                    // if (playing_hold == 2304 - 1) begin
-                    if (playing_hold == 5 - 1) begin
+                    if (playing_hold == 2304 - 1) begin
                         read_trigger <= 1;
                         playing_hold <= 0;
                     end else begin
