@@ -13,7 +13,7 @@ from scipy.io import wavfile
 SAMPLE_RATE = 44100
 WINDOW_SIZE = 2048
 FRACTION_BITS = 14
-SAMP_PLAY_DURATION = 5
+SAMP_PLAY_DURATION = 10
 
 out = []
 
@@ -61,7 +61,7 @@ async def test_bufferizer(dut):
 
     cocotb.start_soon(logger(dut))
 
-    for i, samp in enumerate(input_wave):
+    for i, samp in enumerate(input_wave[:20000]):
         await FallingEdge(dut.clk_in)
         dut.sample_in.value = int(samp)
         dut.sample_valid_in.value = 1
@@ -101,7 +101,7 @@ async def test_bufferizer(dut):
     plt.tight_layout()
 
     plt.savefig("waveform_plots_psola_bram.png")
-    plt.show()
+    # plt.show()
 
     dut._log.info("Processed audio saved to cocotb_psola_bram_output.wav")
 

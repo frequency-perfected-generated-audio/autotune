@@ -28,9 +28,9 @@ module bufferizer #(
         .tau_valid_in(taumin_valid),
 
         // gets next window of input while running psola on current
-        .sample_in(sample),
-        .addr_in(sample_num),
-        .sample_valid_in(sample_valid),
+        .sample_in(burst_sample),
+        .addr_in(burst_addr_piped),
+        .sample_valid_in(burst_valid),
 
         .out_val(raw_psola),
         .out_addr_piped(raw_psola_addr),
@@ -99,10 +99,78 @@ module bufferizer #(
             endcase
         end
     end
+
+    localparam int BURST_PERIOD = 5;
+    logic                            burst_active;
+    logic                            burst_active_piped;
+    logic                            burst_trigger;
+    logic [ $clog2(WINDOW_SIZE)-1:0] burst_addr;
+    logic [ $clog2(WINDOW_SIZE)-1:0] burst_addr_piped;
+    logic [$clog2(BURST_PERIOD)-1:0] burst_hold;
+
+    logic [                    31:0] burst_sample;
+    logic                            burst_valid;
+    always_ff @(posedge clk_in) begin
+        if (rst_in) begin
+            burst_active  <= 0;
+            burst_trigger <= 0;
+            burst_addr   <= WINDOW_SIZE - 1;
+            burst_hold    <= 0;
+        end else begin
+            if (taumin_valid) begin
+                burst_active <= 1;
+            end else if (burst_active) begin
+                if (burst_hold == BURST_PERIOD - 1) begin
+                    burst_hold <= 0;
+                    burst_trigger <= 1;
+
+                    if (burst_addr == WINDOW_SIZE - 1) begin
+                        // terminate burst
+                        burst_active <= 0;
+                        burst_addr <= WINDOW_SIZE - 1;
+                        burst_trigger <= 0;
+                        burst_hold <= 0;
+                    end else begin
+                        burst_addr <= burst_addr + 1;
+                    end
+                end else begin
+                    burst_trigger <= 0;
+                    burst_hold <= burst_hold + 1;
+                end
+            end
+        end
+    end
+
+    pipeline #(
+        .STAGES(2),
+        .WIDTH ($clog2(WINDOW_SIZE))
+    ) burst_addr_pipe (
+        .clk (clk_in),
+        .rst (rst_in),
+        .din (burst_addr),
+        .dout(burst_addr_piped)
+    );
+
+    ring_buffer #(
+        .ENTRIES(2 * WINDOW_SIZE),
+        .DATA_WIDTH(32)
+    ) input_buf (
+        .clk_in(clk_in),
+        .rst_in(rst_in),
+        // Write Inputs
+        .shift_data(sample_in),
+        .shift_trigger(sample_valid_in),
+        // Read Inputs
+        .read_trigger(burst_trigger),
+        // Outputs
+        .data_out(burst_sample),
+        .data_valid_out(burst_valid)
+    );
+
     ring_buffer #(
         .ENTRIES(2 * MAX_EXTENDED),
         .DATA_WIDTH(32)
-    ) ringy_buffy (
+    ) output_buf (
         .clk_in(clk_in),
         .rst_in(rst_in),
         // Write Inputs
