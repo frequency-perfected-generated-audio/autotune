@@ -1,7 +1,8 @@
 `default_nettype none
 module bufferizer #(
-    parameter int WINDOW_SIZE  = 2048,
-    parameter int MAX_EXTENDED = 2200
+    parameter int WINDOW_SIZE = 2048,
+    parameter int MAX_EXTENDED = 2200,
+    parameter int SAMP_PLAY_DURATION = 2304
 ) (
     input wire clk_in,
     input wire rst_in,
@@ -86,7 +87,7 @@ module bufferizer #(
                     end
                 end
                 PLAYING: begin
-                    if (playing_hold == 2304 - 1) begin
+                    if (playing_hold == SAMP_PLAY_DURATION - 1) begin
                         read_trigger <= 1;
                         playing_hold <= 0;
                     end else begin

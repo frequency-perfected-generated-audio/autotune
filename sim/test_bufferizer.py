@@ -13,6 +13,7 @@ from scipy.io import wavfile
 SAMPLE_RATE = 44100
 WINDOW_SIZE = 2048
 FRACTION_BITS = 14
+SAMP_PLAY_DURATION = 5
 
 out = []
 
@@ -72,7 +73,7 @@ async def test_bufferizer(dut):
         if i % 2048 == 20:
             dut.taumin_valid_in.value = 0
         dut.sample_valid_in.value = 0
-        await ClockCycles(dut.clk_in, 4)
+        await ClockCycles(dut.clk_in, SAMP_PLAY_DURATION - 1)
 
     processed_signal = np.array(out)
     # # sf.write("cocotb_psola_bram_output.wav", processed_signal, SAMPLE_RATE)
@@ -119,9 +120,10 @@ def main():
         proj_path / "hdl" / "xilinx_true_dual_port_read_first_1_clock_ram.v",
         proj_path / "hdl" / "fp_div.sv",
         proj_path / "hdl" / "pipeline.sv",
+        proj_path / "hdl" / "ring_buffer.sv",
     ]
     build_test_args = ["-Wall"]
-    parameters = {}
+    parameters = {"SAMP_PLAY_DURATION": SAMP_PLAY_DURATION}
     sys.path.append(str(proj_path / "sim"))
     runner = get_runner(sim)
     runner.build(
