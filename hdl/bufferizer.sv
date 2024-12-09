@@ -113,7 +113,6 @@ module bufferizer #(
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
             burst_active  <= 0;
-            burst_trigger <= 0;
             burst_addr   <= 0;
             burst_hold    <= 0;
         end else begin
@@ -122,24 +121,22 @@ module bufferizer #(
             end else if (burst_active) begin
                 if (burst_hold == BURST_PERIOD - 1) begin
                     burst_hold <= 0;
-                    burst_trigger <= 1;
 
                     if (burst_addr == WINDOW_SIZE - 1) begin
                         // terminate burst
                         burst_active <= 0;
                         burst_addr <= 0;
-                        burst_trigger <= 0;
                         burst_hold <= 0;
                     end else begin
                         burst_addr <= burst_addr + 1;
                     end
                 end else begin
-                    burst_trigger <= 0;
                     burst_hold <= burst_hold + 1;
                 end
             end
         end
     end
+    assign burst_trigger = burst_hold == BURST_PERIOD - 1;
 
     pipeline #(
         .STAGES(2),
