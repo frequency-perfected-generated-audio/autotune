@@ -50,26 +50,27 @@ module bufferizer #(
     logic [10:0] taumin;
     logic [10:0] taumin_valid;
 
-    logic hi_side_playing;
-    assign audio_valid_out = playing_hold == 2;
+    typedef enum {
+        LOADING_BUFFER,
+        PLAYING
+    } state_e;
 
-    logic [12:0] playing_addr;
+    state_e state;
     logic [12:0] playing_hold;
-
+    logic read_trigger;
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
             sample_num <= 2048 - 1;  // so that on the first sample we go into 0
-            playing_addr <= 0;
-            playing_hold <= 0;
-            hi_side_playing <= 0;
+            state <= LOADING_BUFFER;
+            playing_hold <= '0;
         end else begin
             if (sample_valid_in) begin
-                if (sample_num == 2048 - 1) begin
+                sample <= sample_in;
+                if (sample_num == WINDOW_SIZE - 1) begin
                     sample_num <= 0;
                 end else begin
                     sample_num <= sample_num + 1;
                 end
-                sample <= sample_in;
             end
             sample_valid <= sample_valid_in;
 
@@ -78,46 +79,41 @@ module bufferizer #(
             end
             taumin_valid <= taumin_valid_in;
 
-            if (raw_psola_done) begin
-                hi_side_playing <= ~hi_side_playing;
-                playing_addr <= '0;
-                playing_hold <= '0;
-            end else if (playing_hold == 2304 - 1) begin
-                playing_addr <= playing_addr + 1;
-                playing_hold <= 0;
-            end else begin
-                playing_hold <= playing_hold + 1;
-            end
-
+            case (state)
+                LOADING_BUFFER: begin
+                    if (raw_psola_done) begin
+                        state <= PLAYING;
+                    end
+                end
+                PLAYING: begin
+                    // if (playing_hold == 2304 - 1) begin
+                    if (playing_hold == 5 - 1) begin
+                        read_trigger <= 1;
+                        playing_hold <= 0;
+                    end else begin
+                        read_trigger <= 0;
+                        playing_hold <= playing_hold + 1;
+                    end
+                end
+                default: ;  // Impossible!
+            endcase
         end
     end
-    logic [31:0] bram_out;
-    xilinx_true_dual_port_read_first_1_clock_ram #(
-        .RAM_WIDTH(32),
-        .RAM_DEPTH(MAX_EXTENDED * 2),
-        .RAM_PERFORMANCE("HIGH_PERFORMANCE")
-    ) output_bram (
-        // A write port, B read port
-        // might need a -1 here, psola seems to start its address at 1
-        .addra(raw_psola_addr + (hi_side_playing ? 0 : MAX_EXTENDED)),
-        .dina (raw_psola),
-        .wea  (raw_psola_valid),
-        .douta(),
-
-        .addrb(playing_addr + (hi_side_playing ? MAX_EXTENDED : 0)),
-        .dinb (),
-        .web  (1'b0),
-        .doutb(audio_out),
-
-        .clka(clk_in),
-        .ena(1'b1),
-        .enb(1'b1),
-        .rsta(rst_in),
-        .rstb(rst_in),
-        .regcea(1'b1),
-        .regceb(1'b1)
+    ring_buffer #(
+        .ENTRIES(2 * MAX_EXTENDED),
+        .DATA_WIDTH(32)
+    ) ringy_buffy (
+        .clk_in(clk_in),
+        .rst_in(rst_in),
+        // Write Inputs
+        .shift_data(raw_psola),
+        .shift_trigger(raw_psola_valid),
+        // Read Inputs
+        .read_trigger(read_trigger),
+        // Outputs
+        .data_out(audio_out),
+        .data_valid_out(audio_valid_out)
     );
-    // assign audio_out = hi_side_playing ? bram_out : '0;
 
 endmodule
 `default_nettype wire
