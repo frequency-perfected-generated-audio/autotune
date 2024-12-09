@@ -114,7 +114,7 @@ module bufferizer #(
         if (rst_in) begin
             burst_active  <= 0;
             burst_trigger <= 0;
-            burst_addr   <= WINDOW_SIZE - 1;
+            burst_addr   <= 0;
             burst_hold    <= 0;
         end else begin
             if (taumin_valid) begin
@@ -127,7 +127,7 @@ module bufferizer #(
                     if (burst_addr == WINDOW_SIZE - 1) begin
                         // terminate burst
                         burst_active <= 0;
-                        burst_addr <= WINDOW_SIZE - 1;
+                        burst_addr <= 0;
                         burst_trigger <= 0;
                         burst_hold <= 0;
                     end else begin
