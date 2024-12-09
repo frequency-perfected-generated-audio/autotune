@@ -77,6 +77,17 @@ module bram_wrapper #(
         .dout(out_addr_piped)
     );
 
+    logic done_pre_pipe;
+    pipeline #(
+        .STAGES(2),
+        .WIDTH (1)
+    ) done_pipeline (
+        .clk (clk_in),
+        .rst (rst_in),
+        .din (done_pre_pipe),
+        .dout(done)
+    );
+
 
     // BRAM storing PSOLA output values
     // PORT A used for reading current output into PSOLA / out of module, PORT B used for writing psola processed output or clearing
@@ -183,6 +194,7 @@ module bram_wrapper #(
                 OUTPUT: begin
                     if (out_addr == psola_output_window_len - 1) begin
                         state <= IDLE;
+                        done_pre_pipe <= 1;
                         enable_write <= 0;
                     end else begin
                         out_addr <= out_addr + 1;
@@ -190,6 +202,10 @@ module bram_wrapper #(
                 end
                 default: ;  // Impossible!
             endcase
+        end
+
+        if (done_pre_pipe) begin
+            done_pre_pipe <= 0;
         end
 
         if (sample_valid_in) begin

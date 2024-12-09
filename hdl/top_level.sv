@@ -90,22 +90,6 @@ module top_level (
     logic [10:0] raw_taumin;
     logic raw_taumin_valid;
 
-
-    uart_transmit #(
-        .INPUT_CLOCK_FREQ(100_000_000),
-        .BAUD_RATE(460800)
-    ) uart_tx (
-        .clk_in(clk_100mhz),
-        .rst_in(sys_rst),
-
-        .data_byte_in(raw_taumin[10:3]),
-        .trigger_in  (raw_taumin_valid),
-
-        .busy_out(),
-        .tx_wire_out(uart_txd)
-
-    );
-
     yin #(
         .WIDTH(16),
         .WINDOW_SIZE(2048),
@@ -145,20 +129,16 @@ module top_level (
     assign ss0_c = ss_c;
     assign ss1_c = ss_c;
 
-    assign rgb0  = '0;
-    assign rgb1  = '0;
+    assign rgb0  = {2'b0, raw_psola_valid};
+    assign rgb1  = {2'b0, raw_psola_done};
 
 
     localparam int MAX_EXTENDED = 2200;
-    logic [                    31:0] psola;
-    logic [$clog2(MAX_EXTENDED)-1:0] psola_addr;
-    logic                            psola_valid;
     logic [                    31:0] raw_psola;
     logic [$clog2(MAX_EXTENDED)-1:0] raw_psola_addr;
     logic                            raw_psola_valid;
 
     logic                            raw_psola_done;
-    logic                            psola_done;
     bram_wrapper #(
         .WINDOW_SIZE (2048),
         .MAX_EXTENDED(MAX_EXTENDED)
@@ -182,74 +162,117 @@ module top_level (
         .done(raw_psola_done)
     );
 
-    xilinx_true_dual_port_read_first_1_clock_ram #(
-        .RAM_WIDTH(32),
-        .RAM_DEPTH(MAX_EXTENDED * 2),
-        .RAM_PERFORMANCE("HIGH_PERFORMANCE")
-    ) output_bram (
-        // A write port, B read port
-        .addra(psola_addr + (psola_parity ? MAX_EXTENDED : 0)),
-        .dina (psola),
-        .wea  (psola_valid),
-        .douta(),
+    // xilinx_true_dual_port_read_first_1_clock_ram #(
+    //     .RAM_WIDTH(32),
+    //     .RAM_DEPTH(MAX_EXTENDED * 2),
+    //     .RAM_PERFORMANCE("HIGH_PERFORMANCE")
+    // ) output_bram (
+    //     // A write port, B read port
+    //     // might need a -1 here, psola seems to start its address at 1
+    //     .addra(raw_psola_addr + (psola_parity ? MAX_EXTENDED : 0)),
+    //     .dina (raw_psola),
+    //     .wea  (raw_psola_valid),
+    //     .douta(),
+    //
+    //     .addrb(psola_output_addr + (psola_parity ? 0 : MAX_EXTENDED)),
+    //     .dinb (),
+    //     .web  (1'b0),
+    //     .doutb(psola_spk_input),
+    //
+    //     .clka(clk_in),
+    //     .ena(1'b1),
+    //     .enb(1'b1),
+    //     .rsta(rst_in),
+    //     .rstb(rst_in),
+    //     .regcea(1'b1),
+    //     .regceb(1'b1)
+    // );
+    //
+    // logic psola_parity;
+    // logic [31:0] psola_spk_input;
+    // logic [$clog2(MAX_EXTENDED)-1:0] psola_output_addr;
+    // logic [$clog2(2304)-1:0] psola_hold_count;
+    // always_ff @(posedge clk_100mhz) begin
+    //     if (sys_rst) begin
+    //         psola_parity <= 0;
+    //         psola_output_addr <= '0;
+    //         psola_hold_count <= '0;
+    //     end else begin
+    //         // Switch on negedge of psola_valid, aka when samples are done being written
+    //         if (raw_psola_done) begin
+    //             psola_parity <= ~psola_parity;
+    //             psola_hold_count <= '0;
+    //             psola_output_addr <= '0;
+    //         end else begin
+    //             if (psola_hold_count == 2304 - 1) begin
+    //                 psola_hold_count  <= 0;
+    //                 psola_output_addr <= psola_output_addr + 1;
+    //             end else begin
+    //                 psola_hold_count <= psola_hold_count + 1;
+    //             end
+    //         end
+    //     end
+    // end
+    //
+    // uart_turbo_transmit #(
+    //     .INPUT_CLOCK_FREQ(100_000_000),
+    //     .BAUD_RATE(961600)
+    // ) turbo_uart (
+    //     .clk_in(clk_100mhz),
+    //     .rst_in(sys_rst),
+    //
+    //     .data_in(psola_spk_input[25:10]),
+    //     .trigger_in(processed_sample_valid),
+    //
+    //     .busy_out(),
+    //     .tx_wire_out(uart_txd)
+    //
+    // );
+    //
+    // logic spk_out;
+    // pdm #(
+    //     .NBITS(16)
+    // ) audio_generator (
+    //     .clk_in(clk_100mhz),
+    //     .d_in  (psola_spk_input[25:10]),
+    //     .rst_in(sys_rst),
+    //     .d_out (spk_out)
+    // );
+    // assign spkl = spk_out;
+    // assign spkr = spk_out;
 
-        .addrb(psola_output_addr + (psola_parity ? 0 : MAX_EXTENDED)),
-        .dinb (),
-        .web  (1'b0),
-        .doutb(psola_spk_input),
 
-        .clka(clk_in),
-        .ena(1'b1),
-        .enb(1'b1),
-        .rsta(rst_in),
-        .rstb(rst_in),
-        .regcea(1'b1),
-        .regceb(1'b1)
+    bufferizer #(
+        .WINDOW_SIZE (20480),
+        .MAX_EXTENDED(2200)
+    ) buf_dawg (
+        .clk_in(clk_100mhz),
+        .rst_in(sys_rst),
+
+        .taumin_in(taumin),
+        .taumin_valid_in(taumin_valid),
+
+        .sample_in(processed_sample),
+        .sample_valid_in(processed_sample_valid),
+
+        .audio_out(raw_audio),
+        .audio_valid_out(raw_audio_valid)
     );
-
-    logic psola_parity;
-    logic [31:0] psola_spk_input;
-    logic [$clog2(MAX_EXTENDED)-1:0] psola_output_addr;
-    logic [$clog2(2304)-1:0] psola_hold_count;
+    logic [31:0] raw_audio;
+    logic raw_audio_valid;
+    logic [31:0] audio;
     always_ff @(posedge clk_100mhz) begin
-        if (sys_rst) begin
-            psola_parity <= 0;
-            psola_output_addr <= '0;
-            psola_hold_count <= '0;
-        end else begin
-            if (raw_psola_valid) begin
-                psola <= raw_psola;
-                psola_addr <= raw_psola_addr;
-            end
-            psola_valid <= raw_psola_valid;
-            psola_done  <= raw_psola_done;
-
-            // Switch on negedge of psola_valid, aka when samples are done being written
-            if (psola_done) begin
-                psola_parity <= ~psola_parity;
-                psola_hold_count <= '0;
-                psola_output_addr <= '0;
-            end else begin
-                if (psola_hold_count == 2304 - 1) begin
-                    psola_hold_count  <= 0;
-                    psola_output_addr <= psola_output_addr + 1;
-                end else begin
-                    psola_hold_count <= psola_hold_count + 1;
-                end
-            end
+        if (raw_audio_valid) begin
+            audio <= raw_audio;
         end
     end
 
-    logic [31:0] psola_spk_input_reg;
-    always_ff @(posedge clk_100mhz) begin
-        psola_spk_input_reg <= psola_spk_input;
-    end
     logic spk_out;
     pdm #(
-        .NBITS(16)
+        .NBITS(32)
     ) audio_generator (
         .clk_in(clk_100mhz),
-        .d_in  (psola_spk_input_reg[25:10]),
+        .d_in  (audio),
         .rst_in(sys_rst),
         .d_out (spk_out)
     );
