@@ -143,13 +143,13 @@ module top_level (
 
     uart_turbo_transmit #(
         .INPUT_CLOCK_FREQ(100_000_000),
-        .BAUD_RATE(921600)
+        .BAUD_RATE(115200)
     ) turbo_uart (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        .data_in(audio[30:15]),
-        .trigger_in(audio_valid),
+        .data_in({5'b0, taumin}),
+        .trigger_in(taumin_valid),
 
         .busy_out(),
         .tx_wire_out(uart_txd)
