@@ -1,0 +1,24 @@
+#-----------------------------------------------------------
+# Vivado v2024.1 (64-bit)
+# SW Build 5076996 on Wed May 22 18:36:09 MDT 2024
+# IP Build 5075265 on Wed May 22 21:45:21 MDT 2024
+# SharedData Build 5076995 on Wed May 22 18:29:18 MDT 2024
+# Start of session at: Tue Nov 19 16:04:43 2024
+# Process ID: 733983
+# Current directory: /home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/hdl
+# Command line: vivado -mode batch -source build.tcl -jvm Xmx4g
+# Log file: /home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/hdl/vivado.log
+# Journal file: /home/shrutsiv/Documents/MIT/Fall_2024/6.205/project/autotune/hdl/vivado.jou
+# Running On        :shrutsiv-ThinkPad-X1-Carbon-Gen-11
+# Platform          :Linuxmint
+# Operating System  :Linux Mint 22
+# Processor Detail  :13th Gen Intel(R) Core(TM) i7-1365U
+# CPU Frequency     :2968.401 MHz
+# CPU Physical cores:10
+# CPU Logical cores :12
+# Host memory       :16397 MB
+# Swap memory       :2147 MB
+# Total Virtual     :18545 MB
+# Available Virtual :5612 MB
+#-----------------------------------------------------------
+source build.tcl

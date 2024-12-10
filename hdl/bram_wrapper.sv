@@ -119,7 +119,8 @@ module bram_wrapper #(
 
     psola #(
         .WINDOW_SIZE (WINDOW_SIZE),
-        .MAX_EXTENDED(MAX_EXTENDED)
+        .MAX_EXTENDED(MAX_EXTENDED),
+        .FRACTION_BITS(16)
     ) psola_inst (
         .clk_in(clk_in),
         .rst_in(rst_in),

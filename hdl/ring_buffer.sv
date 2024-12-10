@@ -19,6 +19,7 @@ module ring_buffer #(
 );
 
   localparam int ADDRSIZE = $clog2(ENTRIES);
+  localparam int CACHESIZE = 64;
 
   logic [ADDRSIZE-1:0] head;
   logic [ADDRSIZE-1:0] tail;
@@ -26,37 +27,33 @@ module ring_buffer #(
 
   logic [DATA_WIDTH-1:0] line_buffer_out;
 
-  logic cycle_toggle;
-
-  logic [DATA_WIDTH-1:0] crossing_data;
-  logic [1:0][DATA_WIDTH-1:0] old_tail_data;
-  assign crossing_data = (cycle_toggle) ? old_tail_data[0] : old_tail_data[1];
+  logic [CACHESIZE-1:0][DATA_WIDTH-1:0] tail_cache;
 
   logic crossing;
   assign crossing = head == tail;
 
   logic zero_flag;
 
-  assign data_out = (!crossing) ? line_buffer_out : crossing_data;
+  assign data_out = (!crossing) ? line_buffer_out : tail_cache[0];
   assign zero_flag = data_out == '0 && data_valid_out;
 
   always_ff @(posedge clk_in) begin
     if (rst_in) begin
       head <= 0;
       tail <= 0;
-      cycle_toggle <= 0;
 
-      old_tail_data <= '0;
+      tail_cache <= '0;
     end else begin
       if (shift_trigger) begin
           head <= (head == ENTRIES - 1) ? 0 : head + 1;
       end
 
       if (read_trigger) begin
-          cycle_toggle <= ~cycle_toggle;
           if (!crossing) begin
               tail <= (tail == ENTRIES - 1) ? 0 : tail + 1;
-              old_tail_data <= {old_tail_data, line_buffer_out};
+              tail_cache <= {tail_cache, line_buffer_out};
+          end else begin
+              tail_cache <= {tail_cache, tail_cache[CACHESIZE-1:1]};
           end
       end
 

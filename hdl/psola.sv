@@ -126,7 +126,7 @@ module psola #(
     fp_div #(
         .WIDTH(32),
         .FRACTION_WIDTH(FRACTION_BITS),
-        .NUM_STAGES(10)
+        .NUM_STAGES(11)
     ) tau_in_div (
         .clk_in(clk_in),
         .rst_in(rst_in),
