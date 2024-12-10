@@ -114,6 +114,13 @@ module top_level (
     assign ss0_c = ss_c;
     assign ss1_c = ss_c;
 
+    logic [31:0] raw_audio;
+    logic raw_audio_valid;
+    logic [49:0] filtered_audio;
+    logic filtered_audio_valid;
+    logic [49:0] audio;
+    logic audio_valid;
+
     bufferizer #(
         .WINDOW_SIZE (20480),
         .MAX_EXTENDED(2200)
@@ -130,15 +137,26 @@ module top_level (
         .audio_out(raw_audio),
         .audio_valid_out(raw_audio_valid)
     );
-    logic [31:0] raw_audio;
-    logic raw_audio_valid;
-    logic [31:0] audio;
-    logic audio_valid;
+
+    filter #(
+        .DATA_WIDTH (32)
+    ) u_filt (
+        .clk_in(clk_100mhz),
+        .rst_in(sys_rst),
+
+        .sample_in(raw_audio),
+        .sample_valid_in(raw_audio_valid),
+
+        .sample_out(filtered_audio),
+        .sample_valid_out(filtered_audio_valid)
+    );
+
+
     always_ff @(posedge clk_100mhz) begin
-        if (raw_audio_valid) begin
-            audio <= raw_audio;
+        if (filtered_audio_valid) begin
+            audio <= filtered_audio_valid;
         end
-        audio_valid <= raw_audio_valid;
+        audio_valid <= filtered_audio_valid;
     end
 
     uart_turbo_transmit #(
@@ -148,7 +166,7 @@ module top_level (
         .clk_in(clk_100mhz),
         .rst_in(sys_rst),
 
-        .data_in(audio[31:16]),
+        .data_in(audio[46:31]),
         .trigger_in(audio_valid),
 
         .busy_out(),
@@ -157,10 +175,10 @@ module top_level (
 
     logic spk_out;
     pdm #(
-        .NBITS(32)
+        .NBITS(49)
     ) audio_generator (
         .clk_in(clk_100mhz),
-        .d_in  (audio[31:1]),
+        .d_in  (audio[49:1]),
         .rst_in(sys_rst),
         .d_out (spk_out)
     );
