@@ -144,7 +144,7 @@ module top_level (
         .NBITS(32)
     ) audio_generator (
         .clk_in(clk_100mhz),
-        .d_in  (audio),
+        .d_in  (audio[31:1]),
         .rst_in(sys_rst),
         .d_out (spk_out)
     );
