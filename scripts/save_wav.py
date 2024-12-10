@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import sys
-import wave
 
 import numpy as np
 import serial
+from scipy.io import wavfile
 
 
 def eprint(*args, **kwargs):
@@ -18,23 +18,22 @@ fname = sys.argv[1]
 
 SERIAL_PORT_NAME = "/dev/cu.usbserial-8874292302131"
 FS = 44100
-SECONDS = 3
+SECONDS = 15
 
-ser = serial.Serial(SERIAL_PORT_NAME, bytesize=serial.EIGHTBITS, baudrate=460800)
+ser = serial.Serial(SERIAL_PORT_NAME, bytesize=serial.EIGHTBITS, baudrate=1_000_000)
 eprint("Serial port initialized")
 
 eprint(f"Recording {SECONDS} seconds of audio:")
 samples = []
 for i in range(FS * SECONDS):
-    val = int.from_bytes(ser.read(), "little")
+    hi = int.from_bytes(ser.read(), "little")
+    lo = int.from_bytes(ser.read(), "little")
     if (i + 1) % FS == 0:
         eprint(f"{(i+1)/FS} seconds complete")
-    samples.append(val * 256)
+    samples.append((hi * 255 + lo) - 32768)
 
-with wave.open(fname, "wb") as wf:
-    wf.setframerate(FS)
-    wf.setnchannels(1)
-    wf.setsampwidth(2)
-    samples = np.array(samples, dtype=np.uint16).tobytes()
-    wf.writeframes(samples)
-    eprint(f"Recording saved to {fname}")
+
+arr = np.array(samples, dtype=np.int16)
+np.save(f"{fname}.npy", arr)
+
+wavfile.write(fname, FS, arr)
