@@ -133,11 +133,27 @@ module top_level (
     logic [31:0] raw_audio;
     logic raw_audio_valid;
     logic [31:0] audio;
+    logic audio_valid;
     always_ff @(posedge clk_100mhz) begin
         if (raw_audio_valid) begin
             audio <= raw_audio;
         end
+        audio_valid <= raw_audio_valid;
     end
+
+    uart_turbo_transmit #(
+        .INPUT_CLOCK_FREQ(100_000_000),
+        .BAUD_RATE(921600)
+    ) turbo_uart (
+        .clk_in(clk_100mhz),
+        .rst_in(sys_rst),
+
+        .data_in(audio[30:15]),
+        .trigger_in(audio_valid),
+
+        .busy_out(),
+        .tx_wire_out(uart_txd)
+    );
 
     logic spk_out;
     pdm #(
