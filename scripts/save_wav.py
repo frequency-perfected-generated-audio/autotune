@@ -18,7 +18,7 @@ fname = sys.argv[1]
 
 SERIAL_PORT_NAME = "/dev/cu.usbserial-8874292302131"
 FS = 44100
-SECONDS = 15
+SECONDS = int(sys.argv[2]) if len(sys.argv) == 3 else 15
 
 ser = serial.Serial(SERIAL_PORT_NAME, bytesize=serial.EIGHTBITS, baudrate=1_000_000)
 eprint("Serial port initialized")
